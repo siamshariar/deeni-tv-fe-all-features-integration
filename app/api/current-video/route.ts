@@ -113,7 +113,7 @@ export async function GET(request: Request) {
       startTime: programStartTime,
       endTime:   programEndTime,
       duration:  data.program.duration,
-      seekTo:    data.currentTime,
+      seekTo:    data.program.duration - 6, // To check next video load
     }
 
     const previousPrograms: Array<{ ytVideoId: string; title: string; startTime: number; endTime: number; duration: number }> = []

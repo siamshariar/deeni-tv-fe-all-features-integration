@@ -196,14 +196,21 @@ export function useYouTubePlayer() {
         })
         
         // Try to get duration after load
-        setTimeout(() => {
-          try {
-            const duration = playerRef.current.getDuration()
-            if (duration && !isNaN(duration) && duration > 0) {
-              durationRef.current = duration
-            }
-          } catch (err) {}
-        }, 500)
+        // setTimeout(() => {
+        //   try {
+        //     const duration = playerRef.current.getDuration()
+        //     if (duration && !isNaN(duration) && duration > 0) {
+        //       durationRef.current = duration
+        //     }
+        //   } catch (err) {}
+        // }, 500)
+        // TODO: Is this delay mandatory??
+        try {
+          const duration = playerRef.current.getDuration()
+          if (duration && !isNaN(duration) && duration > 0) {
+            durationRef.current = duration
+          }
+        } catch (err) {}
         
         return true
       }

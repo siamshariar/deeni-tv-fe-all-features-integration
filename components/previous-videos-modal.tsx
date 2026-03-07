@@ -413,9 +413,9 @@ export function PreviousVideosModal({
                   <div className="flex flex-col items-center justify-center py-12 px-4">
                     <History className="h-8 w-8 text-white/20 mb-4" />
                     <p className="text-white/60 text-sm mb-2">No previously watched videos</p>
-                    <p className="text-white/40 text-xs text-center">
+                    {/* <p className="text-white/40 text-xs text-center">
                       Videos you watch will appear here
-                    </p>
+                    </p> */}
                   </div>
                 ) : (
                   <div className="space-y-2">

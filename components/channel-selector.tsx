@@ -131,9 +131,9 @@ export function ChannelSelector({
                       />
                     )}
                     <div className="relative flex items-center gap-3">
-                      <div className="text-lg filter drop-shadow-lg">
+                      {/* <div className="text-lg filter drop-shadow-lg">
                         {channel.isQuran ? '📖' : '📺'}
-                      </div>
+                      </div> */}
                       <div className="flex-1 min-w-0">
                         <p className={`font-semibold truncate ${
                           String(channel.id) === currentChannelId ? 'text-primary' : 'text-white'
