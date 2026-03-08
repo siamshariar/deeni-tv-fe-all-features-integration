@@ -9,6 +9,7 @@ import { VideoProgram } from '@/types/schedule'
 import { formatDuration } from '@/lib/schedule-utils'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useMediaQuery } from '@/hooks/use-media-query'
+import Image from 'next/image'
 
 interface PreviousVideosModalProps {
   isOpen: boolean
@@ -150,14 +151,23 @@ const VideoPlayerModal = ({
   const [showVolumeSlider, setShowVolumeSlider] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
+  const [playerLoaded, setPlayerLoaded] = useState(false)
+  const hideVolumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Format seconds → M:SS
-  const fmtTime = (sec: number) => {
+const fmtTime = (sec: number): string => {
     if (!sec || isNaN(sec) || sec < 0) return '0:00'
-    const m = Math.floor(sec / 60)
-    const s = Math.floor(sec % 60)
-    return `${m}:${s.toString().padStart(2, '0')}`
-  }
+    
+    const hours = Math.floor(sec / 3600)
+    const minutes = Math.floor((sec % 3600) / 60)
+    const seconds = Math.floor(sec % 60)
+    
+    if (hours > 0) {
+        return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+    }
+    
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`
+}
 
   // Initialise YT Player API when modal opens
   useEffect(() => {
@@ -214,6 +224,7 @@ const VideoPlayerModal = ({
               event.target.playVideo()
               const d = event.target.getDuration()
               if (typeof d === 'number' && d > 0) setDuration(d)
+              setPlayerLoaded(true)
             } catch {}
             startPolling()
           },
@@ -275,6 +286,12 @@ const VideoPlayerModal = ({
     }
   }, [isOpen, video?.videoId])
 
+  // Reset the auto-hide timer (both platforms)
+  const resetHideTimer = useCallback(() => {
+    if (hideVolumeTimerRef.current) clearTimeout(hideVolumeTimerRef.current)
+    hideVolumeTimerRef.current = setTimeout(() => setShowVolumeSlider(false), 3000)
+  }, [])
+
   const handleVolumeChange = useCallback((values: number[]) => {
     const v = values[0]
     volumeRef.current = v
@@ -285,7 +302,8 @@ const VideoPlayerModal = ({
       if (v === 0) ytPlayerRef.current?.mute()
       else ytPlayerRef.current?.unMute()
     } catch {}
-  }, [])
+    resetHideTimer()
+  }, [resetHideTimer])
 
   const toggleMute = useCallback(() => {
     setIsMuted(prev => {
@@ -301,6 +319,21 @@ const VideoPlayerModal = ({
       return newMuted
     })
   }, [])
+
+  // Mobile: first tap shows slider; subsequent taps while visible toggle mute
+  const handleVolumeIconClick = useCallback(() => {
+    if (isMobile) {
+      if (!showVolumeSlider) {
+        setShowVolumeSlider(true)
+        resetHideTimer()
+      } else {
+        toggleMute()
+        resetHideTimer()
+      }
+    } else {
+      toggleMute()
+    }
+  }, [isMobile, showVolumeSlider, toggleMute, resetHideTimer])
 
   const getVolumeIcon = (cls = 'h-4 w-4') => {
     if (isMuted || volume === 0) return <VolumeX className={cls} />
@@ -369,7 +402,20 @@ const VideoPlayerModal = ({
 
               {/* Video container (YT Player API injects iframe here) */}
               <div className="relative w-full aspect-video bg-black overflow-hidden border-x border-white/10 select-none">
-                <div ref={containerRef} className="absolute inset-0 w-full h-full" />
+                {!playerLoaded && video && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black">
+                    <Image
+                      src={`https://img.youtube.com/vi/${video.videoId}/hqdefault.jpg`}
+                      alt={video.title}
+                      fill
+                      className="object-cover"
+                    />
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                      <Play className="h-16 w-16 text-white/80" />
+                    </div>
+                  </div>
+                )}
+                <div ref={containerRef} className={`absolute inset-0 w-full h-full ${playerLoaded ? 'opacity-100' : 'opacity-0'}`} />
               </div>
 
               {/* ─── Seek / Progress bar ─── */}
@@ -398,45 +444,48 @@ const VideoPlayerModal = ({
               <div className={`w-full bg-black/60 backdrop-blur-xl border border-white/10 border-t-0 rounded-b-2xl md:rounded-b-3xl ${isMobile ? 'px-3 py-2' : 'px-4 py-2'}`}>
                 <div className="flex items-center gap-2">
 
-                  {/* Volume icon + hover-to-expand slider (desktop) */}
+                  {/* Volume icon + slider */}
                   <div
                     className="relative flex items-center gap-1"
-                    onMouseEnter={() => !isMobile && setShowVolumeSlider(true)}
-                    onMouseLeave={() => !isMobile && setShowVolumeSlider(false)}
+                    onMouseEnter={() => {
+                      if (!isMobile) {
+                        setShowVolumeSlider(true)
+                        resetHideTimer()
+                      }
+                    }}
+                    onMouseLeave={() => {
+                      if (!isMobile) resetHideTimer()
+                    }}
                   >
                     <button
-                      onClick={toggleMute}
+                      onClick={handleVolumeIconClick}
                       className={`text-white/70 hover:text-white rounded-full hover:bg-white/10 transition-colors flex items-center justify-center flex-shrink-0 ${isMobile ? 'h-9 w-9' : 'h-8 w-8'}`}
                       aria-label={isMuted ? 'Unmute' : 'Mute'}
                     >
                       {getVolumeIcon(iconCls)}
                     </button>
 
-                    {/* Volume slider — shown on hover (desktop only) */}
-                    {!isMobile && (
-                      <AnimatePresence>
-                        {showVolumeSlider && (
-                          <motion.div
-                            initial={{ opacity: 0, width: 0 }}
-                            animate={{ opacity: 1, width: 88 }}
-                            exit={{ opacity: 0, width: 0 }}
-                            transition={{ duration: 0.15 }}
-                            className="overflow-hidden"
-                            onMouseEnter={() => setShowVolumeSlider(true)}
-                            onMouseLeave={() => setShowVolumeSlider(false)}
-                          >
-                            <Slider
-                              value={[isMuted ? 0 : volume]}
-                              min={0}
-                              max={100}
-                              step={1}
-                              onValueChange={handleVolumeChange}
-                              className="w-full"
-                            />
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    )}
+                    {/* Volume slider — desktop hover & mobile tap */}
+                    <AnimatePresence>
+                      {showVolumeSlider && (
+                        <motion.div
+                          initial={{ opacity: 0, width: 0 }}
+                          animate={{ opacity: 1, width: 96 }}
+                          exit={{ opacity: 0, width: 0 }}
+                          transition={{ duration: 0.15 }}
+                          className="overflow-visible px-1"
+                        >
+                          <Slider
+                            value={[isMuted ? 0 : volume]}
+                            min={0}
+                            max={100}
+                            step={1}
+                            onValueChange={handleVolumeChange}
+                            className="w-full"
+                          />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
 
                   {/* Time display */}
