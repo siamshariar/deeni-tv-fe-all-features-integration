@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
 import { VideoProgram } from '@/types/schedule'
 import { formatDuration } from '@/lib/schedule-utils'
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useMediaQuery } from '@/hooks/use-media-query'
 
 interface PreviousVideosModalProps {
@@ -229,13 +229,44 @@ const VideoPlayerModal = ({
   const [showVolumeSlider, setShowVolumeSlider] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [modalOpenTime, setModalOpenTime] = useState<Date | null>(null)
+
+  // ── iOS detection ──
+  const isIOS = useMemo(() => {
+    if (typeof navigator === 'undefined') return false
+    return (
+      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    )
+  }, [])
+
+  // On iOS, autoplay is blocked.  We show a play overlay; once the user taps
+  // it we send a `playVideo` postMessage to the iframe (inside the gesture)
+  // which iOS accepts as user-initiated playback.
+  const [hasStarted, setHasStarted] = useState(false)
+
+  const handleiOSPlay = useCallback(() => {
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage(
+        JSON.stringify({ event: 'command', func: 'playVideo', args: [] }),
+        '*'
+      )
+    }
+    setHasStarted(true)
+  }, [])
+
+  // Reset hasStarted when modal opens / video changes
+  useEffect(() => {
+    if (isOpen) {
+      setHasStarted(false)
+    }
+  }, [isOpen, video?.videoId])
   
   // Handle modal open timing and loading state
   useEffect(() => {
     if (isOpen) {
       setModalOpenTime(new Date())
       setIsLoading(true)
-      const timer = setTimeout(() => setIsLoading(false), 4000)
+      const timer = setTimeout(() => setIsLoading(false), 2000)
       return () => clearTimeout(timer)
     }
   }, [isOpen])
@@ -359,12 +390,42 @@ const VideoPlayerModal = ({
               <div className="relative w-full aspect-video bg-black overflow-hidden border-x border-white/10 select-none">
                 <iframe
                   ref={iframeRef}
-                  src={`https://www.youtube.com/embed/${video.videoId}?autoplay=1&controls=0&modestbranding=1&rel=0&showinfo=0&iv_load_policy=3&disablekb=1&enablejsapi=1&origin=${typeof window !== 'undefined' ? window.location.origin : ''}`}
+                  src={`https://www.youtube.com/embed/${video.videoId}?autoplay=1&controls=0&modestbranding=1&rel=0&showinfo=0&iv_load_policy=3&disablekb=1&enablejsapi=1&playsinline=1&origin=${typeof window !== 'undefined' ? window.location.origin : ''}`}
                   className="absolute inset-0 w-full h-full pointer-events-none"
                   allow="autoplay; encrypted-media; fullscreen"
                   allowFullScreen
+                  // @ts-expect-error — non-standard but required for older iOS WebKit
+                  playsInline
+                  webkit-playsinline="webkit-playsinline"
                 />
                 <BrandedLoadingOverlay isVisible={isLoading} programName={video?.title || ''} />
+
+                {/* ── iOS tap-to-play overlay ──
+                    iOS blocks autoplay with sound.  This overlay sits on top of the
+                    iframe; tapping it fires a postMessage('playVideo') inside the
+                    user-gesture window, which iOS accepts.  Hidden once started. */}
+                {isIOS && !hasStarted && !isLoading && (
+                  <motion.button
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={handleiOSPlay}
+                    // className="absolute inset-0 z-[50] flex items-center justify-center bg-black/40 backdrop-blur-[2px] cursor-pointer"
+                    className="absolute inset-0 z-[50] flex items-center justify-center bg-black cursor-pointer"
+                  >
+                    <motion.div
+                      initial={{ scale: 0.8 }}
+                      animate={{ scale: 1 }}
+                      transition={{ type: 'spring', damping: 15 }}
+                      className="flex flex-col items-center gap-3"
+                    >
+                      <div className="rounded-full bg-white/15 backdrop-blur-md border border-white/20 p-5 shadow-2xl">
+                        <Play className={`${isMobile ? 'h-10 w-10' : 'h-12 w-12'} text-white fill-white`} />
+                      </div>
+                      <span className="text-white/80 text-sm font-medium">Tap to Play</span>
+                    </motion.div>
+                  </motion.button>
+                )}
               </div>
               
               {/* Bottom controls bar - matching live TV bottom bar */}
