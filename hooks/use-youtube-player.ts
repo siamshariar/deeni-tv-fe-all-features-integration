@@ -27,6 +27,11 @@ declare global {
   }
 }
 
+// A short, publicly available YouTube video used as a silent placeholder to
+// prime the iOS WKWebView autoplay context before the real content loads.
+// Using a well-known short video (YouTube's own "YouTube" channel intro clip).
+const IOS_PRIMER_VIDEO_ID = 'jNQXAC9IVRw' // "Me at the zoo" — first YouTube video, ~19 s
+
 export function useYouTubePlayer() {
   const playerRef = useRef<any>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -35,6 +40,17 @@ export function useYouTubePlayer() {
   const volumeRef = useRef<number>(75)
   const durationRef = useRef<number>(0)
   const videoIdRef = useRef<string>('')
+  // Tracks whether we have a silently primed player that hasn't been swapped yet
+  const isPrimedRef = useRef<boolean>(false)
+  // ── Delegating event-handler refs ──
+  // The primed player's YT.Player events are wired to these refs at construction
+  // time.  Initially they are no-ops.  When the real video loads (iOS path), we
+  // swap them to the real handlers via setPlayerCallbacks() — the same YT.Player
+  // instance stays alive, preserving iOS's audio-unlock gesture context.
+  const onStateChangeRef = useRef<((state: number) => void) | null>(null)
+  const onErrorRef = useRef<((code: number, msg: string) => void) | null>(null)
+  const onDurationChangeRef = useRef<((duration: number) => void) | null>(null)
+  const onReadyRef = useRef<((player: any) => void) | null>(null)
   
   const loadYouTubeAPI = useCallback((): Promise<void> => {
     return new Promise((resolve, reject) => {
@@ -183,7 +199,142 @@ export function useYouTubePlayer() {
       options.onError?.(0, 'Failed to create player')
     }
   }, [loadYouTubeAPI])
-  
+
+  // ── primePlayer ──────────────────────────────────────────────────────────────
+  // Creates a MUTED, HIDDEN YouTube player on mount — no user gesture required.
+  //
+  // iOS Safari (WKWebView) permits muted autoplay without a gesture.  By creating
+  // the player early, the browser's "this document has interacted with video"
+  // flag is set, so when the user later taps "Start Watching" we can call
+  // player.unMute() + player.setVolume() synchronously inside that gesture, then
+  // swap the video with loadVideoById() — all without triggering the autoplay
+  // restriction again.
+  //
+  // The container element is visually hidden via CSS (opacity-0 / pointer-events-none
+  // applied by the caller) — the primer video never appears on screen.
+  const primePlayer = useCallback(async (): Promise<void> => {
+    if (!containerRef.current || isPrimedRef.current) return
+
+    try {
+      await loadYouTubeAPI()
+    } catch {
+      return // API failed — graceful degradation; normal init path will try again
+    }
+
+    try {
+      containerRef.current.innerHTML = ''
+
+      const playerId = `yt-primer-${Date.now()}`
+      const playerDiv = document.createElement('div')
+      playerDiv.id = playerId
+      playerDiv.style.cssText = 'width:100%;height:100%;position:absolute;top:0;left:0;'
+      containerRef.current.appendChild(playerDiv)
+
+      playerRef.current = new window.YT.Player(playerId, {
+        videoId: IOS_PRIMER_VIDEO_ID,
+        playerVars: {
+          autoplay: 1,
+          mute: 1,           // muted — iOS allows this without gesture
+          controls: 0,
+          disablekb: 1,
+          fs: 0,
+          modestbranding: 1,
+          rel: 0,
+          showinfo: 0,
+          iv_load_policy: 3,
+          playsinline: 1,    // mandatory for iOS inline playback
+          origin: typeof window !== 'undefined' ? window.location.origin : '',
+          enablejsapi: 1,
+        },
+        events: {
+          onReady: () => {
+            isPrimedRef.current = true
+            isMutedRef.current = true
+            // Patch iframe attributes so iOS respects playsinline / autoplay allow-list
+            const patchPrimer = (attempt = 0) => {
+              try {
+                const iframe = containerRef.current?.querySelector('iframe')
+                if (iframe) {
+                  iframe.setAttribute('playsinline', 'true')
+                  iframe.setAttribute('webkit-playsinline', 'webkit-playsinline')
+                  iframe.setAttribute('allow',
+                    'autoplay; encrypted-media; picture-in-picture; fullscreen; accelerometer; gyroscope'
+                  )
+                  iframe.style.border = 'none'
+                  iframe.style.pointerEvents = 'none'
+                } else if (attempt < 4) {
+                  setTimeout(() => patchPrimer(attempt + 1), 250)
+                }
+              } catch (_) {}
+            }
+            setTimeout(() => patchPrimer(), 50)
+            // Delegate to ref (if swapped by setPlayerCallbacks before onReady fires)
+            onReadyRef.current?.(playerRef.current)
+          },
+          // Delegate through refs — initially no-ops; swapped by setPlayerCallbacks
+          // when the real video loads, so we keep the same YT.Player instance.
+          onStateChange: (event: any) => {
+            if (onStateChangeRef.current) {
+              onStateChangeRef.current(event.data)
+            }
+            // Also track duration on PLAYING/CUED like initializePlayer does
+            if (event.data === YT_STATE.CUED || event.data === YT_STATE.PLAYING) {
+              try {
+                const dur = event.target.getDuration()
+                if (dur && !isNaN(dur) && dur > 0 && dur !== durationRef.current) {
+                  durationRef.current = dur
+                  onDurationChangeRef.current?.(dur)
+                }
+              } catch (_) {}
+            }
+          },
+          onError: (event: any) => {
+            onErrorRef.current?.(event.data, `Error ${event.data}`)
+          },
+        },
+      })
+    } catch (_) {
+      // Silently swallow — worst case the normal initializePlayer path runs on tap
+    }
+  }, [loadYouTubeAPI])
+
+  // ── unmuteAndResume ──────────────────────────────────────────────────────────
+  // Call this SYNCHRONOUSLY inside a user-gesture handler (e.g. button onClick).
+  // Unmutes the primed (or active) player and sets the desired volume level so
+  // iOS grants audio permission for the current player instance.
+  // Must be called before any async work (fetch, etc.) to stay inside the gesture.
+  const unmuteAndResume = useCallback((targetVolume: number = 75) => {
+    if (!playerRef.current) return
+    try {
+      isMutedRef.current = false
+      volumeRef.current = targetVolume
+      if (typeof playerRef.current.unMute === 'function') {
+        playerRef.current.unMute()
+      }
+      if (typeof playerRef.current.setVolume === 'function') {
+        playerRef.current.setVolume(targetVolume)
+      }
+    } catch (_) {}
+  }, [])
+
+  // ── setPlayerCallbacks ──────────────────────────────────────────────────────
+  // Swap the delegating-ref event handlers that the primed player calls.
+  // Call this BEFORE loadVideoById so that state-change events from the real
+  // video reach the caller's handlers (onReady, onStateChange, etc.).
+  // This avoids destroying the primed YT.Player (which would lose the iOS
+  // audio-unlock gesture context).
+  const setPlayerCallbacks = useCallback((callbacks: {
+    onReady?: (player: any) => void
+    onStateChange?: (state: number) => void
+    onError?: (code: number, msg: string) => void
+    onDurationChange?: (duration: number) => void
+  }) => {
+    onReadyRef.current = callbacks.onReady ?? null
+    onStateChangeRef.current = callbacks.onStateChange ?? null
+    onErrorRef.current = callbacks.onError ?? null
+    onDurationChangeRef.current = callbacks.onDurationChange ?? null
+  }, [])
+
   const loadVideo = useCallback((videoId: string, startSeconds?: number) => {
     if (!playerRef.current) return false
     
@@ -310,6 +461,10 @@ export function useYouTubePlayer() {
   return {
     containerRef,
     initializePlayer,
+    primePlayer,
+    unmuteAndResume,
+    setPlayerCallbacks,
+    isPrimedRef,
     loadVideo,
     getDuration,
     setVolume,
