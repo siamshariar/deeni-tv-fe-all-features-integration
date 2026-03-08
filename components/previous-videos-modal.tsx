@@ -127,7 +127,7 @@ const BreakingNewsTicker = ({
   )
 }
 
-// Fullscreen Video Player Modal for previous videos - No YouTube controls
+// Fullscreen Video Player Modal — custom controls (seekbar + volume)
 const VideoPlayerModal = ({ 
   video, 
   allVideos,
@@ -139,77 +139,193 @@ const VideoPlayerModal = ({
   isOpen: boolean
   onClose: () => void 
 }) => {
-  const iframeRef = useRef<HTMLIFrameElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const ytPlayerRef = useRef<any>(null)
+  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const isSeekingRef = useRef(false)
+  const volumeRef = useRef(75)
   const isMobile = useMediaQuery('(max-width: 640px)')
   const [volume, setVolume] = useState(75)
   const [isMuted, setIsMuted] = useState(false)
   const [showVolumeSlider, setShowVolumeSlider] = useState(false)
-  
-  // Handle volume change via postMessage to YouTube iframe
-  const handleVolumeChange = useCallback((value: number[]) => {
-    const newVolume = value[0]
-    setVolume(newVolume)
-    
-    // If volume is increased while muted, unmute first
-    if (newVolume > 0 && isMuted) {
-      setIsMuted(false)
-      // Send unmute command to YouTube
-      if (iframeRef.current && iframeRef.current.contentWindow) {
-        iframeRef.current.contentWindow.postMessage(JSON.stringify({
-          event: 'command',
-          func: 'unMute',
-          args: []
-        }), '*')
-      }
-    } else if (newVolume === 0) {
-      setIsMuted(true)
-    }
-    
-    // Post message to YouTube iframe to change volume
-    if (iframeRef.current && iframeRef.current.contentWindow) {
-      iframeRef.current.contentWindow.postMessage(JSON.stringify({
-        event: 'command',
-        func: 'setVolume',
-        args: [newVolume]
-      }), '*')
-    }
-  }, [isMuted])
-  
-  const toggleMute = useCallback(() => {
-    const newMuted = !isMuted
-    setIsMuted(newMuted)
-    
-    if (iframeRef.current && iframeRef.current.contentWindow) {
-      iframeRef.current.contentWindow.postMessage(JSON.stringify({
-        event: 'command',
-        func: newMuted ? 'mute' : 'unMute',
-        args: []
-      }), '*')
-    }
-  }, [isMuted])
-  
-  const getVolumeIcon = () => {
-    if (isMuted || volume === 0) return <VolumeX className={isMobile ? 'h-6 w-6' : 'h-5 w-5'} />
-    if (volume < 30) return <Volume className={isMobile ? 'h-6 w-6' : 'h-5 w-5'} />
-    if (volume < 70) return <Volume1 className={isMobile ? 'h-6 w-6' : 'h-5 w-5'} />
-    return <Volume2 className={isMobile ? 'h-6 w-6' : 'h-5 w-5'} />
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration] = useState(0)
+
+  // Format seconds → M:SS
+  const fmtTime = (sec: number) => {
+    if (!sec || isNaN(sec) || sec < 0) return '0:00'
+    const m = Math.floor(sec / 60)
+    const s = Math.floor(sec % 60)
+    return `${m}:${s.toString().padStart(2, '0')}`
   }
-  
+
+  // Initialise YT Player API when modal opens
+  useEffect(() => {
+    if (!isOpen || !video) return
+    let destroyed = false
+    setCurrentTime(0)
+    setDuration(0)
+
+    const startPolling = () => {
+      if (progressIntervalRef.current) clearInterval(progressIntervalRef.current)
+      progressIntervalRef.current = setInterval(() => {
+        if (destroyed || !ytPlayerRef.current) return
+        try {
+          const t = ytPlayerRef.current.getCurrentTime?.() ?? 0
+          const d = ytPlayerRef.current.getDuration?.() ?? 0
+          if (!isSeekingRef.current && typeof t === 'number') setCurrentTime(t)
+          if (typeof d === 'number' && d > 0) setDuration(d)
+        } catch {}
+      }, 250)
+    }
+
+    const createPlayer = () => {
+      if (destroyed || !containerRef.current || !window.YT?.Player) return
+      if (ytPlayerRef.current?.destroy) {
+        try { ytPlayerRef.current.destroy() } catch {}
+        ytPlayerRef.current = null
+      }
+      containerRef.current.innerHTML = ''
+      const playerId = `watch-yt-${Date.now()}`
+      const div = document.createElement('div')
+      div.id = playerId
+      containerRef.current.appendChild(div)
+
+      ytPlayerRef.current = new window.YT.Player(playerId, {
+        videoId: video.videoId,
+        playerVars: {
+          autoplay: 1,
+          controls: 0,
+          modestbranding: 1,
+          rel: 0,
+          showinfo: 0,
+          iv_load_policy: 3,
+          disablekb: 1,
+          enablejsapi: 1,
+          origin: window.location.origin,
+          playsinline: 1,
+        },
+        events: {
+          onReady: (event: any) => {
+            if (destroyed) return
+            try {
+              event.target.setVolume(volumeRef.current)
+              event.target.unMute()
+              event.target.playVideo()
+              const d = event.target.getDuration()
+              if (typeof d === 'number' && d > 0) setDuration(d)
+            } catch {}
+            startPolling()
+          },
+          onStateChange: (event: any) => {
+            if (destroyed) return
+            // Refresh duration once video starts playing / is cued
+            if (event.data === 1 || event.data === 5) {
+              try {
+                const d = ytPlayerRef.current?.getDuration?.() ?? 0
+                if (d > 0) setDuration(d)
+              } catch {}
+            }
+          },
+        },
+      })
+
+      // Patch iframe attributes for iOS Safari autoplay
+      const patchIframe = (attempt = 0) => {
+        if (destroyed) return
+        const iframe = containerRef.current?.querySelector('iframe')
+        if (iframe) {
+          iframe.setAttribute('playsinline', 'true')
+          iframe.setAttribute('webkit-playsinline', 'webkit-playsinline')
+          iframe.setAttribute('allow', 'autoplay; encrypted-media; fullscreen')
+          Object.assign(iframe.style, {
+            border: 'none', pointerEvents: 'none',
+            width: '100%', height: '100%',
+            position: 'absolute', top: '0', left: '0',
+          })
+        } else if (attempt < 5) {
+          setTimeout(() => patchIframe(attempt + 1), 300)
+        }
+      }
+      setTimeout(() => patchIframe(), 100)
+    }
+
+    if (window.YT?.Player) {
+      createPlayer()
+    } else {
+      if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
+        const tag = document.createElement('script')
+        tag.src = 'https://www.youtube.com/iframe_api'
+        document.head.appendChild(tag)
+      }
+      const prevCallback = window.onYouTubeIframeAPIReady
+      window.onYouTubeIframeAPIReady = () => {
+        prevCallback?.()
+        createPlayer()
+      }
+    }
+
+    return () => {
+      destroyed = true
+      if (progressIntervalRef.current) clearInterval(progressIntervalRef.current)
+      if (ytPlayerRef.current?.destroy) {
+        try { ytPlayerRef.current.destroy() } catch {}
+        ytPlayerRef.current = null
+      }
+    }
+  }, [isOpen, video?.videoId])
+
+  const handleVolumeChange = useCallback((values: number[]) => {
+    const v = values[0]
+    volumeRef.current = v
+    setVolume(v)
+    setIsMuted(v === 0)
+    try {
+      ytPlayerRef.current?.setVolume(v)
+      if (v === 0) ytPlayerRef.current?.mute()
+      else ytPlayerRef.current?.unMute()
+    } catch {}
+  }, [])
+
+  const toggleMute = useCallback(() => {
+    setIsMuted(prev => {
+      const newMuted = !prev
+      try {
+        if (newMuted) {
+          ytPlayerRef.current?.mute()
+        } else {
+          ytPlayerRef.current?.unMute()
+          ytPlayerRef.current?.setVolume(volumeRef.current || 75)
+        }
+      } catch {}
+      return newMuted
+    })
+  }, [])
+
+  const getVolumeIcon = (cls = 'h-4 w-4') => {
+    if (isMuted || volume === 0) return <VolumeX className={cls} />
+    if (volume < 30) return <Volume className={cls} />
+    if (volume < 70) return <Volume1 className={cls} />
+    return <Volume2 className={cls} />
+  }
+
   if (!video) return null
-  
+
+  const iconCls = isMobile ? 'h-5 w-5' : 'h-4 w-4'
+
   return (
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Backdrop - Not clickable */}
+          {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black z-[80]"
           />
-          
-          {/* Fullscreen Player - Same layout as live TV player */}
+
+          {/* Fullscreen Player */}
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -217,25 +333,19 @@ const VideoPlayerModal = ({
             transition={{ duration: 0.2 }}
             className="fixed inset-0 z-[90] flex items-center justify-center bg-gradient-to-br from-zinc-950 via-zinc-900 to-black"
           >
-            {/* Centered container matching live TV iframe sizing */}
-            <div className={`relative w-full ${
-              isMobile ? 'w-full' : 'md:w-[70vw] md:max-w-[1400px]'
-            }`}>
-              {/* Video title bar - ABOVE the iframe, inside the container */}
-              <div className={`w-full bg-black/80 backdrop-blur-xl border border-white/10 border-b-0 rounded-t-2xl md:rounded-t-3xl ${
-                isMobile ? 'px-3 py-2' : 'px-4 py-3'
-              }`}>
+            <div className={`relative w-full ${isMobile ? 'w-full' : 'md:w-[70vw] md:max-w-[1400px]'}`}>
+
+              {/* Title bar */}
+              <div className={`w-full bg-black/80 backdrop-blur-xl border border-white/10 border-b-0 rounded-t-2xl md:rounded-t-3xl ${isMobile ? 'px-3 py-2' : 'px-4 py-3'}`}>
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={onClose}
-                      className={`text-white hover:bg-white/20 rounded-full bg-white/10 backdrop-blur-sm flex-shrink-0 ${
-                        isMobile ? 'h-8 w-8' : 'h-9 w-9'
-                      }`}
+                      className={`text-white hover:bg-white/20 rounded-full bg-white/10 backdrop-blur-sm flex-shrink-0 ${isMobile ? 'h-8 w-8' : 'h-9 w-9'}`}
                     >
-                      <ArrowLeft className={isMobile ? 'h-4 w-4' : 'h-4 w-4'} />
+                      <ArrowLeft className="h-4 w-4" />
                     </Button>
                     <div className="flex-1 min-w-0">
                       <h3 className={`text-white font-bold truncate ${isMobile ? 'text-sm' : 'text-base'}`}>
@@ -246,71 +356,105 @@ const VideoPlayerModal = ({
                       </p>
                     </div>
                   </div>
-                  
                   <Button
                     variant="ghost"
                     size="icon"
                     onClick={onClose}
-                    className={`text-white hover:bg-white/20 rounded-full bg-white/10 backdrop-blur-sm flex-shrink-0 ${
-                      isMobile ? 'h-8 w-8' : 'h-9 w-9'
-                    }`}
+                    className={`text-white hover:bg-white/20 rounded-full bg-white/10 backdrop-blur-sm flex-shrink-0 ${isMobile ? 'h-8 w-8' : 'h-9 w-9'}`}
                   >
                     <X className={isMobile ? 'h-4 w-4' : 'h-5 w-5'} />
                   </Button>
                 </div>
               </div>
-              
-              {/* Video iframe - Same aspect-video as live TV player */}
+
+              {/* Video container (YT Player API injects iframe here) */}
               <div className="relative w-full aspect-video bg-black overflow-hidden border-x border-white/10 select-none">
-                <iframe
-                  ref={iframeRef}
-                  src={`https://www.youtube.com/embed/${video.videoId}?autoplay=1&controls=0&modestbranding=1&rel=0&showinfo=0&iv_load_policy=3&disablekb=1&enablejsapi=1&origin=${typeof window !== 'undefined' ? window.location.origin : ''}`}
-                  className="absolute inset-0 w-full h-full pointer-events-none"
-                  allow="autoplay; encrypted-media; fullscreen"
-                  allowFullScreen
-                />
+                <div ref={containerRef} className="absolute inset-0 w-full h-full" />
               </div>
-              
-              {/* Bottom controls bar - matching live TV bottom bar */}
-              <div className={`w-full bg-black/60 backdrop-blur-xl border border-white/10 border-t-0 rounded-b-2xl md:rounded-b-3xl ${
-                isMobile ? 'px-3 py-2' : 'px-4 py-3'
-              }`}>
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <img 
-                      src="/DeeniTV-V-2.png" 
-                      alt="Deeni.tv"
-                      className={isMobile ? 'h-4' : 'h-6'}
-                    />
-                  </div>
-                  <div className="flex items-center gap-1 md:gap-2">
-                    {/* Volume toggle */}
-                    {/* <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={toggleMute}
-                      className={`text-white/90 hover:bg-white/20 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 ${
-                        isMobile ? 'h-7 w-7' : 'h-9 w-9'
-                      }`}
-                      title={isMuted ? 'Unmute' : 'Mute'}
-                    >
-                      {getVolumeIcon()}
-                    </Button> */}
-                    {/* Close button */}
-                    {/* <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={onClose}
-                      className={`text-white/90 hover:bg-white/20 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 ${
-                        isMobile ? 'h-7 w-7' : 'h-9 w-9'
-                      }`}
-                      title="Close"
-                    >
-                      <X className={isMobile ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
-                    </Button> */}
-                  </div>
+
+              {/* ─── Seek / Progress bar ─── */}
+              <div className="w-full bg-black/80 border-x border-white/10 px-3 pt-3 pb-1.5">
+                <div
+                  onPointerDown={() => { isSeekingRef.current = true }}
+                  className="w-full"
+                >
+                  <Slider
+                    value={[currentTime]}
+                    min={0}
+                    max={duration > 0 ? duration : 100}
+                    step={0.5}
+                    disabled={duration === 0}
+                    onValueChange={(v) => setCurrentTime(v[0])}
+                    onValueCommit={(v) => {
+                      isSeekingRef.current = false
+                      try { ytPlayerRef.current?.seekTo(v[0], true) } catch {}
+                    }}
+                    className="w-full cursor-pointer"
+                  />
                 </div>
               </div>
+
+              {/* ─── Bottom controls bar ─── */}
+              <div className={`w-full bg-black/60 backdrop-blur-xl border border-white/10 border-t-0 rounded-b-2xl md:rounded-b-3xl ${isMobile ? 'px-3 py-2' : 'px-4 py-2'}`}>
+                <div className="flex items-center gap-2">
+
+                  {/* Volume icon + hover-to-expand slider (desktop) */}
+                  <div
+                    className="relative flex items-center gap-1"
+                    onMouseEnter={() => !isMobile && setShowVolumeSlider(true)}
+                    onMouseLeave={() => !isMobile && setShowVolumeSlider(false)}
+                  >
+                    <button
+                      onClick={toggleMute}
+                      className={`text-white/70 hover:text-white rounded-full hover:bg-white/10 transition-colors flex items-center justify-center flex-shrink-0 ${isMobile ? 'h-9 w-9' : 'h-8 w-8'}`}
+                      aria-label={isMuted ? 'Unmute' : 'Mute'}
+                    >
+                      {getVolumeIcon(iconCls)}
+                    </button>
+
+                    {/* Volume slider — shown on hover (desktop only) */}
+                    {!isMobile && (
+                      <AnimatePresence>
+                        {showVolumeSlider && (
+                          <motion.div
+                            initial={{ opacity: 0, width: 0 }}
+                            animate={{ opacity: 1, width: 88 }}
+                            exit={{ opacity: 0, width: 0 }}
+                            transition={{ duration: 0.15 }}
+                            className="overflow-hidden"
+                            onMouseEnter={() => setShowVolumeSlider(true)}
+                            onMouseLeave={() => setShowVolumeSlider(false)}
+                          >
+                            <Slider
+                              value={[isMuted ? 0 : volume]}
+                              min={0}
+                              max={100}
+                              step={1}
+                              onValueChange={handleVolumeChange}
+                              className="w-full"
+                            />
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    )}
+                  </div>
+
+                  {/* Time display */}
+                  <span className={`text-white/50 font-mono tabular-nums ${isMobile ? 'text-[11px]' : 'text-xs'}`}>
+                    {fmtTime(currentTime)} / {fmtTime(duration)}
+                  </span>
+
+                  <div className="flex-1" />
+
+                  {/* Branding */}
+                  <img
+                    src="/DeeniTV-V-2.png"
+                    alt="Deeni.tv"
+                    className={isMobile ? 'h-4' : 'h-5'}
+                  />
+                </div>
+              </div>
+
             </div>
           </motion.div>
         </>
