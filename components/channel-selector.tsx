@@ -68,7 +68,7 @@ export function ChannelSelector({
                     <Globe className="h-5 w-5 text-primary" />
                   </div>
                   <div>
-                    <h2 className="text-xl font-bold text-white">Select Your Channel</h2>
+                    <h2 className="text-xl font-bold text-white">Select Channel</h2>
                     {isFirstTime && (
                       <p className="text-white/40 text-xs flex items-center gap-1 mt-0.5">
                         <Sparkles className="h-2.5 w-2.5" />

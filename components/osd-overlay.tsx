@@ -81,7 +81,7 @@ export function OSDOverlay() {
                     className="text-white hover:bg-white/20 hover:text-white flex-col gap-2 h-auto py-4 px-6"
                   >
                     <Languages className="h-6 w-6" />
-                    <span className="text-xs font-medium">Language</span>
+                    <span className="text-xs font-medium">Channel</span>
                   </Button>
                   <Button
                     variant="ghost"

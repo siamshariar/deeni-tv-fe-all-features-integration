@@ -56,7 +56,7 @@ export function ScheduleModal({ isOpen, onClose, schedule, currentProgramId }: S
                 <div className="p-1.5 bg-primary/20 rounded-lg">
                   <Calendar className="h-5 w-5 text-primary" />
                 </div>
-                <h2 className="text-lg font-semibold text-white">Today's Schedule</h2>
+                <h2 className="text-lg font-semibold text-white">Programs Schedule</h2>
               </div>
               <Button
                 variant="ghost"

@@ -104,7 +104,7 @@ const ChannelSelectorModal = ({
                   <div className="p-2 bg-primary/20 rounded-xl">
                     <Globe className="h-5 w-5 text-primary" />
                   </div>
-                  <h2 className="text-xl font-bold text-white">Select Your Channel</h2>
+                  <h2 className="text-xl font-bold text-white">Select Channel</h2>
                 </div>
                 <Button
                   variant="ghost"
@@ -2457,12 +2457,12 @@ export function SyncedVideoPlayer({
                       />
                     </div>
 
-                    {/* Action Buttons - Order: Schedule, History, Language, Refresh, Menu */}
+                    {/* Action Buttons - Order: Schedule, History, Channel, Refresh, Menu */}
                     <div className="flex items-center gap-1 md:gap-2">
                       {[
-                        { icon: Calendar, onClick: () => onOpenSchedule?.(), title: "Today's Schedule" },
+                        { icon: Calendar, onClick: () => onOpenSchedule?.(), title: "Programs Schedule" },
                         { icon: History, onClick: () => setShowPreviousModal(true), title: 'Watched Program' },
-                        { icon: Globe, onClick: () => handleOpenChannelSelector(), title: 'Language' },
+                        { icon: Globe, onClick: () => handleOpenChannelSelector(), title: 'Channel' },
                         { icon: RefreshCw, onClick: handleReload, title: 'Refresh' },
                         { icon: MoreHorizontal, onClick: onMenuOpen, title: 'Menu' },
                       ].map((item, index) => (
@@ -2523,7 +2523,7 @@ export function SyncedVideoPlayer({
           setYouTubeMuted(false)
           setIsMuted(false)
           setMainPlayerPaused(false)
-          // Do NOT close the previously watched modal - it stays open
+          // Do NOT close the Previous Programs modal - it stays open
           // Do NOT reload or restart the live TV
         }}
       />
