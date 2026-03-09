@@ -2,11 +2,7 @@
   "short_name": "Deeni.tv",
   "name": "Deeni.tv - Your Spiritual TV Experience",
   "icons": [
-    {
-      "src": "/favicon-16x16.png",
-      "sizes": "16x16",
-      "type": "image/png"
-    },
+
     {
       "src": "/App_logo_192.jpg",
       "sizes": "192x192",
