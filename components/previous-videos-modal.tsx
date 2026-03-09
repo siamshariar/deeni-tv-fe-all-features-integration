@@ -510,7 +510,7 @@ export function PreviousVideosModal({
     setSelectedVideo(null)
     // Resume/unmute main player
     onResumeMainPlayer?.()
-    // Do NOT close this modal - keep Previously Watched modal open
+    // Do NOT close this modal - keep Previous Programs modal open
     // User can continue browsing or close it manually
   }, [onResumeMainPlayer])
 
@@ -545,7 +545,7 @@ export function PreviousVideosModal({
                   </div>
                   <div>
                     <h2 className="text-lg font-semibold text-white">
-                      Previously Watched
+                      Previous Programs
                     </h2>
                     <p className="text-xs text-white/40">
                       {videos.length} {videos.length === 1 ? 'video' : 'videos'}
@@ -569,7 +569,7 @@ export function PreviousVideosModal({
                 {videos.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 px-4">
                     <History className="h-8 w-8 text-white/20 mb-4" />
-                    <p className="text-white/60 text-sm mb-2">No previously watched videos</p>
+                    <p className="text-white/60 text-sm mb-2">No Previous Programs videos</p>
                     <p className="text-white/40 text-xs text-center">
                       Videos you watch will appear here
                     </p>

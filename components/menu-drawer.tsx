@@ -14,9 +14,9 @@ interface MenuDrawerProps {
 }
 
 const mainItems: { id: MenuOption; label: string; icon: React.ElementType }[] = [
-  { id: 'schedule', label: "Today's Schedule", icon: Calendar },
+  { id: 'schedule', label: "Programs Schedule", icon: Calendar },
   { id: 'history', label: 'Watched Program', icon: History },
-  { id: 'language', label: 'Language', icon: Globe },
+  { id: 'language', label: 'Channel', icon: Globe },
   { id: 'reload', label: 'Refresh', icon: RefreshCw },
 ]
 
