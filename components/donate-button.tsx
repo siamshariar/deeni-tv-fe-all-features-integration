@@ -11,7 +11,9 @@ export function DonateButton() {
   }
 
   return (
-    <div className="fixed top-2 right-2 sm:top-4 sm:right-4 z-50 flex items-center">
+    <div className="fixed right-2 sm:right-4 z-50 flex items-center"
+      style={{ top: 'max(0.5rem, env(safe-area-inset-top))' }}
+    >
       {/* Donate Button - Shows on all screens including mobile */}
       <Button
         size="lg"
