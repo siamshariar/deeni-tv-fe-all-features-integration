@@ -1776,8 +1776,33 @@ export function SyncedVideoPlayer({
     loadChannel(channelId)
   }, [loadChannel])
 
-  const handleOpenChannelSelector = useCallback(() => {
+  const handleOpenChannelSelector = useCallback(async () => {
+    // First, show the modal with current channels
     setShowChannelSelector(true)
+
+    // Then, try to refresh channels from API
+    try {
+      const res = await clientFetchWithAuth('https://api.deeniinfotech.com/api/tv-channels')
+      if (res?.data?.length) {
+        const freshChannels = res.data
+        const storedChannels = getStoredApiChannels()
+
+        // Check if there are differences
+        const hasChanges = freshChannels.length !== storedChannels.length ||
+          freshChannels.some((fresh, index) => {
+            const stored = storedChannels[index]
+            return !stored || fresh.id !== stored.id || fresh.title !== stored.title
+          })
+
+        if (hasChanges) {
+          saveApiChannels(freshChannels)
+          setApiChannels(freshChannels)
+        }
+      }
+    } catch (error) {
+      // Ignore API failure and keep stored channels
+      console.error('Failed to refresh channels', error)
+    }
   }, [])
 
   const syncWithServer = useCallback(async () => {
