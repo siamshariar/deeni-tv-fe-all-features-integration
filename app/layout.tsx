@@ -3,6 +3,7 @@ import React from "react"
 import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
+import GoogleAnalytics from '../components/google-analytics'
 import './globals.css'
 
 const geist = Geist({ 
@@ -177,6 +178,36 @@ export default function RootLayout({
           src="https://cdn.jsdelivr.net/npm/pwacompat"
           crossOrigin="anonymous"
         />
+
+
+        {/* ── Google Analytics (gtag.js) ── */}
+        {process.env.NEXT_PUBLIC_GOOGLE_ANALYTICS_ID ? (
+          <>
+            <script
+              async
+              src={`https://www.googletagmanager.com/gtag/js?id=${process.env.NEXT_PUBLIC_GOOGLE_ANALYTICS_ID}`}
+            />
+            <script
+              dangerouslySetInnerHTML={{
+                __html: `
+                  window.dataLayer = window.dataLayer || [];
+                  function gtag(){dataLayer.push(arguments);}
+                  gtag('js', new Date());
+                  gtag('config', '${process.env.NEXT_PUBLIC_GOOGLE_ANALYTICS_ID}', {
+                    page_path: window.location.pathname,
+                  });
+                `,
+              }}
+            />
+          </>
+        ) : (
+          <script
+            // insert a harmless comment when the ID is missing so we can inspect <head>
+            dangerouslySetInnerHTML={{
+              __html: `console.warn('Google Analytics ID is not set. see .env.local');`,
+            }}
+          />
+        )}
       </head>
       <body 
         className="font-sans antialiased bg-zinc-950 text-white"
@@ -186,6 +217,7 @@ export default function RootLayout({
           {children}
         </div>
         <Analytics />
+        <GoogleAnalytics />
       </body>
     </html>
   )
