@@ -117,7 +117,7 @@ const ChannelSelectorModal = ({
               </div>
             </div>
             
-            <div className="p-4 border-b border-white/10">
+            {/* <div className="p-4 border-b border-white/10">
               <div className="relative">
                 <input
                   type="text"
@@ -128,7 +128,7 @@ const ChannelSelectorModal = ({
                 />
                 <Globe className="absolute left-3 top-3.5 h-4 w-4 text-white/40" />
               </div>
-            </div>
+            </div> */}
             
             <div className="p-4 max-h-[60vh] overflow-y-auto custom-scrollbar">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
