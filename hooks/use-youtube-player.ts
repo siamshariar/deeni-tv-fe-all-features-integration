@@ -30,7 +30,7 @@ declare global {
 // A short, publicly available YouTube video used as a silent placeholder to
 // prime the iOS WKWebView autoplay context before the real content loads.
 // Using a well-known short video (YouTube's own "YouTube" channel intro clip).
-const IOS_PRIMER_VIDEO_ID = 'jNQXAC9IVRw' // "Me at the zoo" — first YouTube video, ~19 s
+const IOS_PRIMER_VIDEO_ID = 'flt8T_0CD1A'
 
 export function useYouTubePlayer() {
   const playerRef = useRef<any>(null)

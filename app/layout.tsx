@@ -18,12 +18,15 @@ const geistMono = Geist_Mono({
 })
 
 export const viewport: Viewport = {
+  // viewport-fit=cover + all lock-zoom flags are injected as a raw <meta> in <head>
+  // below, giving full control over the content string iOS actually reads.
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  viewportFit: 'cover',
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: light)', color: '#000000' },
     { media: '(prefers-color-scheme: dark)', color: '#000000' },
   ],
 }
@@ -108,15 +111,10 @@ export const metadata: Metadata = {
   
   category: 'religion',
   
-  // PWA meta tags
+  // PWA meta tags — explicitly rendered in <head> below for full iOS control.
+  // Keeping only entries that don't have a dedicated <meta> in RootLayout.
   other: {
-    'apple-mobile-web-app-capable': 'yes',
-    'apple-mobile-web-app-status-bar-style': 'black-translucent',
-    'apple-mobile-web-app-title': 'Deeni.tv',
-    'format-detection': 'telephone=no',
-    'mobile-web-app-capable': 'yes',
     'msapplication-TileColor': '#000000',
-    'msapplication-tap-highlight': 'no',
   },
 }
 
@@ -132,18 +130,48 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        {/* PWA manifest */}
+        {/* ── Viewport: lock zoom, cover notch/home-bar on iOS ── */}
+        <meta
+          name="viewport"
+          content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+        />
+
+        {/* ── PWA manifest ── */}
         <link rel="manifest" href="/manifest.json" />
         <link rel="manifest" href="/manifest.webmanifest" />
 
-        {/* Safari pinned-tab icon */}
+        {/* ── Safari / iOS home-screen PWA ── */}
+        {/* Runs as standalone (no browser chrome) when added to home screen */}
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        {/* black-translucent: status bar overlays the app (uses safe-area-inset) */}
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="Deeni.tv" />
+        {/* Touch icons shown on iOS home screen */}
+        <link rel="apple-touch-icon" href="/favicon-180x180.png" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/favicon-180x180.png" />
+        <link rel="apple-touch-icon" sizes="192x192" href="/favicon-192x192.png" />
+        {/* Splash screens — shown while PWA is launching (optional but polished) */}
+        <meta name="apple-touch-fullscreen" content="yes" />
+
+        {/* ── Android / Chrome PWA ── */}
+        <meta name="mobile-web-app-capable" content="yes" />
+        {/* Disables tap highlight rectangle on Android */}
+        <meta name="msapplication-tap-highlight" content="no" />
+
+        {/* ── Prevent unwanted browser behaviours ── */}
+        {/* Stops iOS from auto-linking phone numbers / addresses */}
+        <meta name="format-detection" content="telephone=no, address=no, email=no" />
+        {/* Disable automatic translation prompts */}
+        <meta name="google" content="notranslate" />
+
+        {/* ── Safari pinned-tab icon ── */}
         <link rel="mask-icon" href="/DeeniTV.svg" color="#16a34a" />
 
-        {/* MS Application tile */}
+        {/* ── MS Application tile ── */}
         <meta name="msapplication-TileImage" content="/favicon-256x256.png" />
         <meta name="msapplication-TileColor" content="#16a34a" />
 
-        {/* PWA Compatibility shim */}
+        {/* ── PWA Compatibility shim (adds missing iOS meta from manifest) ── */}
         <script
           async
           src="https://cdn.jsdelivr.net/npm/pwacompat"

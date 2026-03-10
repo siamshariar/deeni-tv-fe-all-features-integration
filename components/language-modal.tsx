@@ -21,7 +21,7 @@ const languages = [
 
 export function LanguageModal({ isOpen, onClose, onSelectLanguage, isFirstTime = false }: LanguageModalProps) {
   const handleSelect = (langCode: string) => {
-    console.log('[v0] Language selected:', langCode)
+    console.log('[v0] Channel selected:', langCode)
     // Save to localStorage
     if (typeof window !== 'undefined') {
       localStorage.setItem('deeni-tv-language', langCode)
@@ -58,7 +58,7 @@ export function LanguageModal({ isOpen, onClose, onSelectLanguage, isFirstTime =
                   <Globe className="h-6 w-6 text-primary" />
                 </div>
                 <div>
-                  <h2 className="text-2xl md:text-3xl font-bold text-white">Select Language</h2>
+                  <h2 className="text-2xl md:text-3xl font-bold text-white">Select Channel</h2>
                   {isFirstTime && (
                     <p className="text-white/50 text-sm mt-1 flex items-center gap-1">
                       <Sparkles className="h-3 w-3" />
