@@ -34,14 +34,14 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   metadataBase: new URL('https://deeni.tv'),
   title: {
-    default: 'Deeni.tv - Your Spiritual TV Experience',
+    default: 'Deeni.tv',
     template: '%s | Deeni.tv'
   },
   description: 'Experience premium spiritual content in a cinematic lean-back TV interface. Watch Islamic lectures, Ramadan guides, and more in a synchronized TV-like experience.',
   generator: 'Next.js',
   applicationName: 'Deeni.tv',
   referrer: 'origin-when-cross-origin',
-  keywords: ['Islamic TV', 'Spiritual content', 'Ramadan guide', 'Islamic lectures', 'Dr. Abdullah Jahangir', 'Bengali lectures'],
+  keywords: ['Islamic TV', 'Spiritual content', 'Ramadan guide', 'Islamic lectures', 'Deeni TV'],
   authors: [{ name: 'Deeni.tv Team' }],
   creator: 'Deeni.tv',
   publisher: 'Deeni.tv',
@@ -67,7 +67,7 @@ export const metadata: Metadata = {
   manifest: '/manifest.json',
   
   openGraph: {
-    title: 'Deeni.tv - Your Spiritual TV Experience',
+    title: 'Deeni.tv',
     description: 'Experience premium spiritual content in a cinematic lean-back TV interface',
     url: 'https://deeni.tv',
     siteName: 'Deeni.tv',
@@ -76,7 +76,7 @@ export const metadata: Metadata = {
         url: '/Deeni-TV-Cover-1200-630.jpg',
         width: 1200,
         height: 630,
-        alt: 'Deeni.tv - Your Spiritual TV Experience',
+        alt: 'Deeni.tv',
       },
     ],
     locale: 'en_US',
@@ -85,7 +85,7 @@ export const metadata: Metadata = {
   
   twitter: {
     card: 'summary_large_image',
-    title: 'Deeni.tv - Your Spiritual TV Experience',
+    title: 'Deeni.tv',
     description: 'Experience premium spiritual content in a cinematic lean-back TV interface',
     images: ['/Deeni-TV-Cover-1200-630.jpg'],
     creator: '@deenitv',
