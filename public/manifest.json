@@ -27,7 +27,7 @@
       "src": "/App_logo_256.jpeg",
       "sizes": "256x256",
       "type": "image/jpeg",
-      "purpose": "maskable"
+      "purpose":"maskable"
     }
   ],
   "id": "/?source=pwa",
