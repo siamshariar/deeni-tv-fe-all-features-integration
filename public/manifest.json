@@ -6,44 +6,28 @@
     {
       "src": "/App_logo_192.jpeg",
       "sizes": "192x192",
-      "type": "image/jpeg",
-      "purpose": "any maskable"
+      "type": "image/jpeg"
+    },
+    {
+      "src": "/App_logo_256.jpeg",
+      "sizes": "256x256",
+      "type": "image/jpeg"
+    },
+    {
+      "src": "/App_logo_384.jpeg",
+      "sizes": "384x384",
+      "type": "image/jpeg"
+    },
+    {
+      "src": "/App_logo_512.jpeg",
+      "sizes": "512x512",
+      "type": "image/jpeg"
     },
     {
       "src": "/App_logo_256.jpeg",
       "sizes": "256x256",
       "type": "image/jpeg",
-      "purpose": "any"
-    },
-    {
-      "src": "/App_logo_384.jpeg",
-      "sizes": "384x384",
-      "type": "image/jpeg",
-      "purpose": "any"
-    },
-    {
-      "src": "/App_logo_512.jpeg",
-      "sizes": "512x512",
-      "type": "image/jpeg",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/App_logo_256.jpeg",
-      "sizes": "256x256",
-      "type": "image/jpeg",
-      "purpose": "any"
-    },
-    {
-      "src": "/App_logo_384.jpeg",
-      "sizes": "384x384",
-      "type": "image/jpeg",
-      "purpose": "any"
-    },
-    {
-      "src": "/App_logo_512.jpeg",
-      "sizes": "512x512",
-      "type": "image/jpeg",
-      "purpose": "any maskable"
+      "purpose": "maskable"
     }
   ],
   "id": "/?source=pwa",
