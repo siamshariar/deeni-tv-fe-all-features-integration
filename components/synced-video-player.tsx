@@ -1528,6 +1528,8 @@ export function SyncedVideoPlayer({
               setIsLoading(false);
               setShowStartScreen(false) // Ensure start screen is hidden
               setIframeVisible(true)
+              setIsMuted(false)
+              onStartClick?.()
               setTimeout(() => {
                 setShowBrandedOverlay(false) // Hide branded overlay when playback starts
               }, 3000);
@@ -2218,9 +2220,11 @@ export function SyncedVideoPlayer({
       }`}>
         <div 
           ref={playerRef}
-          className={`relative w-full aspect-video bg-black/50 backdrop-blur-sm overflow-hidden shadow-2xl border border-white/10 border-b-0 transition-all duration-300 ${
-            isFullscreen ? 'rounded-none border-0' : 'rounded-t-2xl md:rounded-t-3xl rounded-b-none'
+           className={`relative w-full aspect-video bg-black/50 backdrop-blur-sm overflow-hidden shadow-2xl border border-white/10 border-b-0 transition-all duration-300 rounded-t-2xl md:rounded-t-3xl rounded-b-none'
           }`}
+          // className={`relative w-full aspect-video bg-black/50 backdrop-blur-sm overflow-hidden shadow-2xl border border-white/10 border-b-0 transition-all duration-300 ${
+          //   isFullscreen ? 'rounded-none border-0' : 'rounded-t-2xl md:rounded-t-3xl rounded-b-none'
+          // }`}
         >
           {/* YouTube iframe container — stays opacity:0 until the real video fires
               its first PLAYING event (iframeVisible).  This hides the primer video
