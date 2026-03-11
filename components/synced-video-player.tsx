@@ -117,7 +117,7 @@ const ChannelSelectorModal = ({
               </div>
             </div>
             
-            <div className="p-4 border-b border-white/10">
+            {/* <div className="p-4 border-b border-white/10">
               <div className="relative">
                 <input
                   type="text"
@@ -128,7 +128,7 @@ const ChannelSelectorModal = ({
                 />
                 <Globe className="absolute left-3 top-3.5 h-4 w-4 text-white/40" />
               </div>
-            </div>
+            </div> */}
             
             <div className="p-4 max-h-[60vh] overflow-y-auto custom-scrollbar">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1776,8 +1776,33 @@ export function SyncedVideoPlayer({
     loadChannel(channelId)
   }, [loadChannel])
 
-  const handleOpenChannelSelector = useCallback(() => {
+  const handleOpenChannelSelector = useCallback(async () => {
+    // First, show the modal with current channels
     setShowChannelSelector(true)
+
+    // Then, try to refresh channels from API
+    try {
+      const res = await clientFetchWithAuth('https://api.deeniinfotech.com/api/tv-channels')
+      if (res?.data?.length) {
+        const freshChannels = res.data
+        const storedChannels = getStoredApiChannels()
+
+        // Check if there are differences
+        const hasChanges = freshChannels.length !== storedChannels.length ||
+          freshChannels.some((fresh, index) => {
+            const stored = storedChannels[index]
+            return !stored || fresh.id !== stored.id || fresh.title !== stored.title
+          })
+
+        if (hasChanges) {
+          saveApiChannels(freshChannels)
+          setApiChannels(freshChannels)
+        }
+      }
+    } catch (error) {
+      // Ignore API failure and keep stored channels
+      console.error('Failed to refresh channels', error)
+    }
   }, [])
 
   const syncWithServer = useCallback(async () => {

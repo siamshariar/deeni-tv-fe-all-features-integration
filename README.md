@@ -203,6 +203,25 @@ export const SCHEDULE: VideoProgram[] = [
 
 ---
 
+## 📈 Analytics
+
+Google Analytics is integrated via the `gtag.js` snippet in `app/layout.tsx`.
+
+1. **Environment variable** – create a `.env.local` (see `.env.local.example`) with:
+
+   ```bash
+   NEXT_PUBLIC_GOOGLE_ANALYTICS_ID=G-WYQ4NS7XL1
+   ```
+
+   Replace the value with your own measurement ID when needed.
+
+2. **Tracking helpers** – utilities live in `lib/gtag.ts` with `pageview` and `event` helpers.
+3. **Automatic pageviews** – `components/google-analytics.tsx` listens to route changes and sends page views.
+4. **Network check** – open devtools, filter network requests for `gtag` or `googletagmanager` and verify a call to:
+   `https://www.googletagmanager.com/gtag/js?id=G-WYQ4NS7XL1` when the site loads.
+
+> ⚠️ Make sure `NEXT_PUBLIC_GOOGLE_ANALYTICS_ID` is set before deploying; the snippet only renders when the variable is defined.
+
 ## 🚀 Getting Started
 
 ### Prerequisites

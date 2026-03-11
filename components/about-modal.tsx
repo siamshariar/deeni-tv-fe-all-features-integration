@@ -66,7 +66,7 @@ export function AboutModal({ isOpen, onClose }: AboutModalProps) {
                 
                 <p>
                   Deeni.tv brings you high-quality spiritual programming including Quran recitations, 
-                  Islamic lectures, historical documentaries, and daily reflections—all in a cinematic viewing experience.
+                  Islamic lectures, historical documentaries, and daily reflections—all in a viewing experience.
                 </p>
                 
                 <div className="pt-4 border-t border-white/10">

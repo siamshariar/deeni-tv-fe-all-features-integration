@@ -3,6 +3,7 @@ import React from "react"
 import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
+import GoogleAnalytics from '../components/google-analytics'
 import './globals.css'
 
 const geist = Geist({ 
@@ -37,7 +38,7 @@ export const metadata: Metadata = {
     default: 'Deeni.tv',
     template: '%s | Deeni.tv'
   },
-  description: 'Experience premium spiritual content in a cinematic lean-back TV interface. Watch Islamic lectures, Ramadan guides, and more in a synchronized TV-like experience.',
+  description: 'Experience premium spiritual content in a lean-back TV interface. Watch Islamic lectures, Ramadan guides, and more in a synchronized TV-like experience.',
   generator: 'Next.js',
   applicationName: 'Deeni.tv',
   referrer: 'origin-when-cross-origin',
@@ -72,7 +73,7 @@ export const metadata: Metadata = {
   
   openGraph: {
     title: 'Deeni.tv',
-    description: 'Experience premium spiritual content in a cinematic lean-back TV interface',
+    description: 'Experience premium spiritual content in a lean-back TV interface',
     url: 'https://deeni.tv',
     siteName: 'Deeni.tv',
     images: [
@@ -90,8 +91,8 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'Deeni.tv',
-    description: 'Experience premium spiritual content in a cinematic lean-back TV interface',
     images: ['/Deeni-TV-Play-store-Cover-1200-630.png'],
+    description: 'Experience premium spiritual content in a lean-back TV interface',    
     creator: '@deenitv',
   },
   
@@ -181,6 +182,36 @@ export default function RootLayout({
           src="https://cdn.jsdelivr.net/npm/pwacompat"
           crossOrigin="anonymous"
         />
+
+
+        {/* ── Google Analytics (gtag.js) ── */}
+        {process.env.NEXT_PUBLIC_GOOGLE_ANALYTICS_ID ? (
+          <>
+            <script
+              async
+              src={`https://www.googletagmanager.com/gtag/js?id=${process.env.NEXT_PUBLIC_GOOGLE_ANALYTICS_ID}`}
+            />
+            <script
+              dangerouslySetInnerHTML={{
+                __html: `
+                  window.dataLayer = window.dataLayer || [];
+                  function gtag(){dataLayer.push(arguments);}
+                  gtag('js', new Date());
+                  gtag('config', '${process.env.NEXT_PUBLIC_GOOGLE_ANALYTICS_ID}', {
+                    page_path: window.location.pathname,
+                  });
+                `,
+              }}
+            />
+          </>
+        ) : (
+          <script
+            // insert a harmless comment when the ID is missing so we can inspect <head>
+            dangerouslySetInnerHTML={{
+              __html: `console.warn('Google Analytics ID is not set. see .env.local');`,
+            }}
+          />
+        )}
       </head>
       <body 
         className="font-sans antialiased bg-zinc-950 text-white"
@@ -190,6 +221,7 @@ export default function RootLayout({
           {children}
         </div>
         <Analytics />
+        <GoogleAnalytics />
       </body>
     </html>
   )
