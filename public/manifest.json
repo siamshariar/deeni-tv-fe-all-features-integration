@@ -44,7 +44,7 @@
   "background_color": "#09090b",
   "display": "standalone",
   "scope": "/",
-  "theme_color": "#16a34a",
+  "theme_color": "#000000",
   "description": "Deeni.tv",
   "lang": "en",
   "categories": [
