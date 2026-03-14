@@ -2,12 +2,26 @@
 
 import { Heart } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useEffect, useRef, useState } from 'react'
 
-const DONATION_URL = 'https://www.deeniinfotech.com/donate#donation-form'
+const DEFAULT_URL = 'https://www.deeniinfotech.com/donate#donation-form'
 
 export function DonateButton() {
+  const [donationUrl, setDonationUrl] = useState(DEFAULT_URL)
+  const fetchedRef = useRef(false)
+
+  useEffect(() => {
+    if (fetchedRef.current) return
+    fetchedRef.current = true
+
+    fetch('/api/donation-url')
+      .then(res => res.json())
+      .then(data => { if (data?.url) setDonationUrl(data.url) })
+      .catch(() => { /* keep DEFAULT_URL on any error */ })
+  }, [])
+
   const handleDonate = () => {
-    window.open(DONATION_URL, '_blank', 'noopener,noreferrer')
+    window.open(donationUrl, '_blank', 'noopener,noreferrer')
   }
 
   return (
@@ -35,3 +49,4 @@ export function DonateButton() {
     </div>
   )
 }
+
