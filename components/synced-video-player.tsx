@@ -1632,8 +1632,6 @@ export function SyncedVideoPlayer({
               setIframeVisible(true) // Reveal iframe — real video is now rendering
               setIsMuted(false)
               onStartClick?.()
-              // Keep the branded overlay visible for a short moment after playback starts
-              // (previously ~4s; adjust here if you want a longer/shorter delay)
               setTimeout(() => setShowBrandedOverlay(false), 2000)
             } else if (state === YT_STATE.PAUSED) {
               // iOS sometimes auto-pauses; resume
@@ -1719,7 +1717,7 @@ export function SyncedVideoPlayer({
               setIframeVisible(true)
               setTimeout(() => {
                 setShowBrandedOverlay(false) // Hide branded overlay when playback starts
-              }, 3000);
+              }, 2000);
               
             } else if (state === YT_STATE.PAUSED) {
               console.log('⏸️ 22 Video paused - resuming')
