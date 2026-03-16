@@ -929,6 +929,11 @@ export function SyncedVideoPlayer({
   const timeUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const videoEndTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const isTransitioningRef = useRef(false)
+  // Prevent double-loads when the app quickly loses/regains focus (or user taps reload fast)
+  const isStreamLoadingRef = useRef(false)
+  // Track whether the app is currently in the background (visibility API)
+  const appInBackgroundRef = useRef(false)
+  
   // "Latest value" refs — used inside syncWithServer so we don't need those values
   // in the useCallback dependency array (which would reset the 5-min interval on each video change)
   const currentProgramRef = useRef<VideoProgram | null>(null)
@@ -1336,7 +1341,9 @@ export function SyncedVideoPlayer({
   useEffect(() => { syncImmediateAfterTransitionRef.current = syncImmediateAfterTransition }, [syncImmediateAfterTransition])
 
   const loadChannel = useCallback(async (channelId: string) => {
-    if (isLoading) return
+    // Prevent concurrent loads (e.g. multiple visibilitychange events / rapid reload taps)
+    if (isLoading || isStreamLoadingRef.current) return
+    isStreamLoadingRef.current = true
     
     setIsLoading(true)
     setApiError(null)
@@ -1625,7 +1632,9 @@ export function SyncedVideoPlayer({
               setIframeVisible(true) // Reveal iframe — real video is now rendering
               setIsMuted(false)
               onStartClick?.()
-              setTimeout(() => setShowBrandedOverlay(false), 3000)
+              // Keep the branded overlay visible for a short moment after playback starts
+              // (previously ~4s; adjust here if you want a longer/shorter delay)
+              setTimeout(() => setShowBrandedOverlay(false), 2000)
             } else if (state === YT_STATE.PAUSED) {
               // iOS sometimes auto-pauses; resume
               play()
@@ -1745,6 +1754,8 @@ export function SyncedVideoPlayer({
       console.error('API call failed:', error)
       setApiError(error instanceof Error ? error.message : 'Failed to load video')
       setIsLoading(false)
+    } finally {
+      isStreamLoadingRef.current = false
     }
   }, [isLoading, playerReady, isPrimedRef, volume, initializePlayer, loadVideo, seekTo, play, setYouTubeVolume, setYouTubeMuted, onChannelChange, onStartClick, getDuration, fetchFromBrowserAPI, notifyParentScheduleChange])
 
@@ -1819,7 +1830,7 @@ export function SyncedVideoPlayer({
 
         // Check if there are differences
         const hasChanges = freshChannels.length !== storedChannels.length ||
-          freshChannels.some((fresh, index) => {
+          freshChannels.some((fresh: any, index: number) => {
             const stored = storedChannels[index]
             return !stored || fresh.id !== stored.id || fresh.title !== stored.title
           })
@@ -2031,6 +2042,36 @@ export function SyncedVideoPlayer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [triggerReload])
 
+  // Handle app background/resume so we always show a fresh live stream on return
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        appInBackgroundRef.current = true
+        console.log('🌙 App hidden — stopping stream and releasing player')
+        setPlayerReady(false)
+        setIframeVisible(false)
+        setShowBrandedOverlay(false)
+        setShowProgramOverlay(false)
+        setIsLoading(false)
+        destroy()
+      } else if (appInBackgroundRef.current) {
+        appInBackgroundRef.current = false
+        console.log('☀️ App resumed — refreshing live stream')
+        if (currentChannelId && !showStartScreen) {
+          // Show loading state immediately to avoid black/paused frames
+          setIsLoading(true)
+          setShowBrandedOverlay(true)
+          setIframeVisible(false)
+          setApiError(null)
+          loadChannel(currentChannelId)
+        }
+      }
+    }
+
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
+  }, [currentChannelId, loadChannel, destroy, showStartScreen])
+
   // Handle playing from previous videos
   const handlePlayFromPrevious = useCallback((video: VideoProgram) => {
     if (!currentChannelId || !playerReady || isTransitioningRef.current) return
@@ -2185,7 +2226,9 @@ export function SyncedVideoPlayer({
       if (videoEndTimeoutRef.current) {
         clearTimeout(videoEndTimeoutRef.current)
       }
-      //destroy()
+      // Ensure the YouTube player is destroyed on unmount so we don't leak
+      // memory or keep the iframe active when the user navigates away.
+      destroy()
     }
   }, [destroy])
 
