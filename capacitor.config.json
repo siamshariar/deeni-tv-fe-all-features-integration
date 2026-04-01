@@ -3,7 +3,17 @@
   "appName": "Deeni TV",
   "webDir": "out",
   "server": {
-    "url": "https://your-app.vercel.app",
+    "url": "https://deeni-tv-release1-1-apk.vercel.app",
     "cleartext": true
-  }
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 3000,
+      "launchAutoHide": true,
+      "backgroundColor": "#09090b",
+      "androidSplashResourceName": "splash",
+      "androidScaleType": "CENTER_CROP"
+    }
+  },
+  "icon": "icon.png"
 }
