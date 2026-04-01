@@ -1,0 +1,9 @@
+{
+  "appId": "com.deeni.tv",
+  "appName": "Deeni TV",
+  "webDir": "out",
+  "server": {
+    "url": "https://your-app.vercel.app",
+    "cleartext": true
+  }
+}

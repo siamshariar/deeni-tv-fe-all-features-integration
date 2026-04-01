@@ -1794,7 +1794,7 @@ export function SyncedVideoPlayer({
 
         // Check if there are differences
         const hasChanges = freshChannels.length !== storedChannels.length ||
-          freshChannels.some((fresh, index) => {
+          freshChannels.some((fresh: any, index: number) => {
             const stored = storedChannels[index]
             return !stored || fresh.id !== stored.id || fresh.title !== stored.title
           })
