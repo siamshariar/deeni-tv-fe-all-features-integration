@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import GoogleAnalytics from '../components/google-analytics'
+import { NativeShell } from '../components/native-shell'
 import './globals.css'
 
 const geist = Geist({ 
@@ -26,8 +27,8 @@ export const viewport: Viewport = {
   userScalable: false,
   viewportFit: 'cover',
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#000000' },
-    { media: '(prefers-color-scheme: dark)', color: '#000000' },
+    { media: '(prefers-color-scheme: light)', color: '#09090b' },
+    { media: '(prefers-color-scheme: dark)', color: '#09090b' },
   ],
 }
 
@@ -118,7 +119,7 @@ export const metadata: Metadata = {
   // PWA meta tags — explicitly rendered in <head> below for full iOS control.
   // Keeping only entries that don't have a dedicated <meta> in RootLayout.
   other: {
-    'msapplication-TileColor': '#000000',
+    'msapplication-TileColor': '#09090b',
   },
 }
 
@@ -131,13 +132,16 @@ export default function RootLayout({
     <html 
       lang="en" 
       className={`${geist.variable} ${geistMono.variable}`}
+      style={{ backgroundColor: '#09090b' }}
       suppressHydrationWarning
     >
       <head />
       <body 
-        className="font-sans antialiased bg-zinc-950 text-white"
+        className="font-sans antialiased bg-[#09090b] text-white"
+        style={{ backgroundColor: '#09090b' }}
         suppressHydrationWarning={true}
       >
+        <NativeShell />
         <div id="root">
           {children}
         </div>
