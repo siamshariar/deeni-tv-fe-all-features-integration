@@ -903,7 +903,7 @@ export function SyncedVideoPlayer({
   
   // App State
   const [isLoading, setIsLoading] = useState(false)
-  const [showStartScreen, setShowStartScreen] = useState(showStartModal)
+  const [showStartScreen, setShowStartScreen] = useState(() => (isIOS ? showStartModal : false))
   const [playerReady, setPlayerReady] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
   const [serverTimeOffset, setServerTimeOffset] = useState(0)
@@ -921,6 +921,7 @@ export function SyncedVideoPlayer({
   const timeUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const videoEndTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const isTransitioningRef = useRef(false)
+  const hasAutoStartedRef = useRef(false)
   // "Latest value" refs — used inside syncWithServer so we don't need those values
   // in the useCallback dependency array (which would reset the 5-min interval on each video change)
   const currentProgramRef = useRef<VideoProgram | null>(null)
@@ -948,7 +949,6 @@ export function SyncedVideoPlayer({
     seekTo,
     getCurrentTime,
     play,
-    getIsMuted,
     destroy
   } = useYouTubePlayer()
 
@@ -998,8 +998,8 @@ export function SyncedVideoPlayer({
 
   // Update showStartScreen when prop changes
   useEffect(() => {
-    setShowStartScreen(showStartModal)
-  }, [showStartModal])
+    setShowStartScreen(isIOS ? showStartModal : false)
+  }, [showStartModal, isIOS])
 
   // Handle external openHistoryModal prop
   useEffect(() => {
@@ -1599,7 +1599,7 @@ export function SyncedVideoPlayer({
               setShowStartScreen(false)
               setPlayerReady(true)
               setIframeVisible(true) // Reveal iframe — real video is now rendering
-              setIsMuted(getIsMuted())
+              setIsMuted(false)
               onStartClick?.()
               setTimeout(() => setShowBrandedOverlay(false), 3000)
             } else if (state === YT_STATE.PAUSED) {
@@ -1629,8 +1629,8 @@ export function SyncedVideoPlayer({
         if (loaded) {
           console.log('✅ 🍎 Video swapped on primed player')
           setYouTubeVolume(volume)
-          // Don't call setYouTubeMuted(false) — unmuteAndResume already did it
-          // synchronously in the gesture. Calling it again is harmless but redundant.
+          setYouTubeMuted(false)
+          setIsMuted(false)
         } else {
           console.error('❌ 🍎 loadVideo failed on primed player')
           setIsLoading(false)
@@ -1658,11 +1658,8 @@ export function SyncedVideoPlayer({
             }
             
             setYouTubeVolume(volume)
-            // On iOS keep muted until user taps the unmute button (user gesture required)
-            if (!isIOS) {
-              setIsMuted(false)
-              setYouTubeMuted(false)
-            }
+            setIsMuted(false)
+            setYouTubeMuted(false)
           },
           onStateChange: (state) => {
             if (!mountedRef.current) return
@@ -1684,7 +1681,7 @@ export function SyncedVideoPlayer({
               console.log('▶️ 22 Video is now playing')
               setIsLoading(false);
               setIframeVisible(true)
-              setIsMuted(getIsMuted())
+              setIsMuted(false)
               setTimeout(() => {
                 setShowBrandedOverlay(false) // Hide branded overlay when playback starts
               }, 3000);
@@ -1723,7 +1720,18 @@ export function SyncedVideoPlayer({
       setApiError(error instanceof Error ? error.message : 'Failed to load video')
       setIsLoading(false)
     }
-  }, [isLoading, playerReady, isPrimedRef, volume, initializePlayer, loadVideo, seekTo, play, setYouTubeVolume, setYouTubeMuted, onChannelChange, onStartClick, getDuration, fetchFromBrowserAPI, notifyParentScheduleChange, getIsMuted])
+  }, [isLoading, playerReady, isPrimedRef, volume, initializePlayer, loadVideo, seekTo, play, setYouTubeVolume, setYouTubeMuted, onChannelChange, onStartClick, getDuration, fetchFromBrowserAPI, notifyParentScheduleChange])
+
+  // Auto-load on web/android: iOS keeps explicit Start button.
+  useEffect(() => {
+    if (isIOS) return
+    if (!currentChannelId) return
+    if (hasAutoStartedRef.current) return
+    if (playerReady || isLoading || showStartScreen || apiError || currentProgram) return
+
+    hasAutoStartedRef.current = true
+    loadChannel(currentChannelId)
+  }, [isIOS, currentChannelId, playerReady, isLoading, showStartScreen, apiError, currentProgram, loadChannel])
 
   const handleFirstTimeStart = useCallback(async () => {
     // ── Step 0 (synchronous — MUST be first, before any await) ──────────────
@@ -1735,6 +1743,8 @@ export function SyncedVideoPlayer({
     if (isPrimedRef.current) {
       unmuteAndResume(volume)
     }
+    setIsMuted(false)
+    setYouTubeMuted(false)
 
     // 1. Fetch channel list from live API and store in localStorage (only if not cached)
     let channels = getStoredApiChannels()
@@ -2255,13 +2265,7 @@ export function SyncedVideoPlayer({
             // TODO: Load iframe muted with default video
           )}
 
-          {/* Tap-to-Unmute Screen */}
-          {/* Full-screen overlay (like StartScreen) — shown whenever player is ready */}
-          {/* but audio is muted. Condition: isMuted && playerReady (works on both    */}
-          {/* iOS and non-iOS; on iOS this appears right after the player starts).    */}
-          {isMuted && playerReady && (
-            <TapToUnmuteScreen onUnmuteClick={toggleMute} />
-          )}
+          {/* Single-start UX: no second unmute gate overlay. */}
           
           {/* Loading overlay */}
           {isLoading && (

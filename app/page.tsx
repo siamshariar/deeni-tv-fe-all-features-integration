@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { SyncedVideoPlayer } from '@/components/synced-video-player'
 import { MenuDrawer, MenuOption } from '@/components/menu-drawer'
 import { DonateButton } from '@/components/donate-button'
@@ -12,6 +12,14 @@ import { getSavedChannel, saveChannel, ApiChannel, getStoredApiChannels, saveApi
 import { clientFetchWithAuth } from '@/lib/client-fetch'
 
 export default function Home() {
+  const isIOS = useMemo(() => {
+    if (typeof navigator === 'undefined') return false
+    return (
+      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    )
+  }, [])
+
   const [activeChannelId, setActiveChannelId] = useState<string>('')
   const [apiChannels, setApiChannels] = useState<ApiChannel[]>([])
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -38,15 +46,15 @@ export default function Home() {
       setActiveChannelId(savedChannel)
       setHasUserInteracted(true)
       setIsFirstTimeUser(false)
-      // If channel exists, show start modal
-      setShowStartModal(true)
+      // iOS needs a user gesture for reliable audio; others auto-start.
+      setShowStartModal(isIOS)
     } else {
       // First time user - show channel selector immediately (must select)
       setIsFirstTimeUser(true)
       setIsChannelSelectorOpen(true)
     }
     setIsLoading(false)
-  }, [])
+  }, [isIOS])
 
   // Fetch channel list for the ChannelSelector when it opens (first-time users)
   useEffect(() => {
@@ -87,9 +95,9 @@ export default function Home() {
     setIsFirstTimeUser(false)
     setIsChannelSelectorOpen(false)
     
-    // After channel selection, show start modal
+    // iOS uses explicit Start; web/android auto-start.
     setTimeout(() => {
-      setShowStartModal(true)
+      setShowStartModal(isIOS)
     }, 300)
   }
 
