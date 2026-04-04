@@ -51,30 +51,55 @@ export function useYouTubePlayer() {
   const onErrorRef = useRef<((code: number, msg: string) => void) | null>(null)
   const onDurationChangeRef = useRef<((duration: number) => void) | null>(null)
   const onReadyRef = useRef<((player: any) => void) | null>(null)
+  const apiLoadPromiseRef = useRef<Promise<void> | null>(null)
   
   const loadYouTubeAPI = useCallback((): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      if (window.YT && window.YT.Player) {
-        apiReadyRef.current = true
-        resolve()
-        return
-      }
+    if (apiReadyRef.current || (window.YT && window.YT.Player)) {
+      apiReadyRef.current = true
+      return Promise.resolve()
+    }
 
-      const timeout = setTimeout(() => {
+    if (apiLoadPromiseRef.current) {
+      return apiLoadPromiseRef.current
+    }
+
+    apiLoadPromiseRef.current = new Promise((resolve, reject) => {
+      const timeout = window.setTimeout(() => {
+        apiLoadPromiseRef.current = null
         reject(new Error('YouTube API failed to load'))
       }, 10000)
-      
-      const script = document.createElement('script')
-      script.src = 'https://www.youtube.com/iframe_api'
-      script.async = true
-      document.head.appendChild(script)
-      
-      window.onYouTubeIframeAPIReady = () => {
-        clearTimeout(timeout)
+
+      const markReady = () => {
+        window.clearTimeout(timeout)
         apiReadyRef.current = true
         resolve()
       }
+
+      const previousReadyHandler = window.onYouTubeIframeAPIReady
+      window.onYouTubeIframeAPIReady = () => {
+        if (typeof previousReadyHandler === 'function') {
+          try {
+            previousReadyHandler()
+          } catch (_) {}
+        }
+        markReady()
+      }
+
+      const existingScript = document.querySelector<HTMLScriptElement>('script[src="https://www.youtube.com/iframe_api"]')
+      if (!existingScript) {
+        const script = document.createElement('script')
+        script.src = 'https://www.youtube.com/iframe_api'
+        script.async = true
+        script.onerror = () => {
+          window.clearTimeout(timeout)
+          apiLoadPromiseRef.current = null
+          reject(new Error('Failed to inject YouTube API script'))
+        }
+        document.head.appendChild(script)
+      }
     })
+
+    return apiLoadPromiseRef.current
   }, [])
 
   // ── Pre-load the YouTube iframe API as soon as the hook mounts ──
@@ -442,6 +467,16 @@ export function useYouTubePlayer() {
     } catch (err) {}
     return 0
   }, [])
+
+  const getIsMuted = useCallback((): boolean => {
+    if (!playerRef.current) return isMutedRef.current
+    try {
+      if (typeof playerRef.current.isMuted === 'function') {
+        return !!playerRef.current.isMuted()
+      }
+    } catch (err) {}
+    return isMutedRef.current
+  }, [])
   
   const destroy = useCallback(() => {
     if (playerRef.current && typeof playerRef.current.destroy === 'function') {
@@ -450,7 +485,6 @@ export function useYouTubePlayer() {
       } catch (err) {}
     }
     playerRef.current = null
-    apiReadyRef.current = false
     durationRef.current = 0
   }, [])
   
@@ -472,6 +506,7 @@ export function useYouTubePlayer() {
     play,
     seekTo,
     getCurrentTime,
+    getIsMuted,
     destroy
   }
 }

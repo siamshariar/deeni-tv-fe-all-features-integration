@@ -948,6 +948,7 @@ export function SyncedVideoPlayer({
     seekTo,
     getCurrentTime,
     play,
+    getIsMuted,
     destroy
   } = useYouTubePlayer()
 
@@ -1598,7 +1599,7 @@ export function SyncedVideoPlayer({
               setShowStartScreen(false)
               setPlayerReady(true)
               setIframeVisible(true) // Reveal iframe — real video is now rendering
-              setIsMuted(false)
+              setIsMuted(getIsMuted())
               onStartClick?.()
               setTimeout(() => setShowBrandedOverlay(false), 3000)
             } else if (state === YT_STATE.PAUSED) {
@@ -1683,6 +1684,7 @@ export function SyncedVideoPlayer({
               console.log('▶️ 22 Video is now playing')
               setIsLoading(false);
               setIframeVisible(true)
+              setIsMuted(getIsMuted())
               setTimeout(() => {
                 setShowBrandedOverlay(false) // Hide branded overlay when playback starts
               }, 3000);
@@ -1721,7 +1723,7 @@ export function SyncedVideoPlayer({
       setApiError(error instanceof Error ? error.message : 'Failed to load video')
       setIsLoading(false)
     }
-  }, [isLoading, playerReady, isPrimedRef, volume, initializePlayer, loadVideo, seekTo, play, setYouTubeVolume, setYouTubeMuted, onChannelChange, onStartClick, getDuration, fetchFromBrowserAPI, notifyParentScheduleChange])
+  }, [isLoading, playerReady, isPrimedRef, volume, initializePlayer, loadVideo, seekTo, play, setYouTubeVolume, setYouTubeMuted, onChannelChange, onStartClick, getDuration, fetchFromBrowserAPI, notifyParentScheduleChange, getIsMuted])
 
   const handleFirstTimeStart = useCallback(async () => {
     // ── Step 0 (synchronous — MUST be first, before any await) ──────────────
@@ -1789,12 +1791,12 @@ export function SyncedVideoPlayer({
     try {
       const res = await clientFetchWithAuth('https://api.deeniinfotech.com/api/tv-channels')
       if (res?.data?.length) {
-        const freshChannels = res.data
+        const freshChannels: ApiChannel[] = res.data
         const storedChannels = getStoredApiChannels()
 
         // Check if there are differences
         const hasChanges = freshChannels.length !== storedChannels.length ||
-          freshChannels.some((fresh, index) => {
+          freshChannels.some((fresh: ApiChannel, index: number) => {
             const stored = storedChannels[index]
             return !stored || fresh.id !== stored.id || fresh.title !== stored.title
           })
@@ -2223,8 +2225,7 @@ export function SyncedVideoPlayer({
       }`}>
         <div 
           ref={playerRef}
-           className={`relative w-full aspect-video bg-black/50 backdrop-blur-sm overflow-hidden shadow-2xl border border-white/10 border-b-0 transition-all duration-300 rounded-t-2xl md:rounded-t-3xl rounded-b-none'
-          }`}
+          className="relative w-full aspect-video bg-black/50 backdrop-blur-sm overflow-hidden shadow-2xl border border-white/10 border-b-0 transition-all duration-300 rounded-t-2xl md:rounded-t-3xl rounded-b-none"
           // className={`relative w-full aspect-video bg-black/50 backdrop-blur-sm overflow-hidden shadow-2xl border border-white/10 border-b-0 transition-all duration-300 ${
           //   isFullscreen ? 'rounded-none border-0' : 'rounded-t-2xl md:rounded-t-3xl rounded-b-none'
           // }`}
@@ -2258,9 +2259,9 @@ export function SyncedVideoPlayer({
           {/* Full-screen overlay (like StartScreen) — shown whenever player is ready */}
           {/* but audio is muted. Condition: isMuted && playerReady (works on both    */}
           {/* iOS and non-iOS; on iOS this appears right after the player starts).    */}
-          {/* {isMuted && playerReady && (
+          {isMuted && playerReady && (
             <TapToUnmuteScreen onUnmuteClick={toggleMute} />
-          )} */}
+          )}
           
           {/* Loading overlay */}
           {isLoading && (
