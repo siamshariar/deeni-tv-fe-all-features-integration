@@ -1098,7 +1098,7 @@ export function SyncedVideoPlayer({
 
         // Check if there are differences
         const hasChanges = freshChannels.length !== storedChannels.length ||
-          freshChannels.some((fresh: ApiChannel, index: number) => {
+          freshChannels.some((fresh: any, index: number) => {
             const stored = storedChannels[index]
             return !stored || fresh.id !== stored.id || fresh.title !== stored.title
           })
@@ -1594,13 +1594,9 @@ export function SyncedVideoPlayer({
         isTablet ? 'w-[90vw]' :
         'w-full'
       }`}>
-<<<<<<< HEAD
         <div 
           ref={playerRef}
           className="relative w-full aspect-video bg-black/50 backdrop-blur-sm overflow-hidden shadow-2xl border border-white/10 border-b-0 transition-all duration-300 rounded-t-2xl md:rounded-t-3xl rounded-b-none"
-          // className={`relative w-full aspect-video bg-black/50 backdrop-blur-sm overflow-hidden shadow-2xl border border-white/10 border-b-0 transition-all duration-300 ${
-          //   isFullscreen ? 'rounded-none border-0' : 'rounded-t-2xl md:rounded-t-3xl rounded-b-none'
-          // }`}
         >
           {/* YouTube iframe container — stays opacity:0 until the real video fires
               its first PLAYING event (iframeVisible).  This hides the primer video
@@ -1613,19 +1609,6 @@ export function SyncedVideoPlayer({
           />
           <div className="absolute inset-0 w-full h-full pointer-events-auto" />
           
-          {/* Branded Loading Overlay - Shows during YouTube loading, hides on PLAYING event */}
-=======
-        <div 
-          ref={playerRef}
-          className="relative w-full aspect-video bg-black/50 backdrop-blur-sm overflow-hidden shadow-2xl border border-white/10 border-b-0 transition-all duration-300 rounded-t-2xl md:rounded-t-3xl rounded-b-none"
-          // className={`relative w-full aspect-video bg-black/50 backdrop-blur-sm overflow-hidden shadow-2xl border border-white/10 border-b-0 transition-all duration-300 ${
-          //   isFullscreen ? 'rounded-none border-0' : 'rounded-t-2xl md:rounded-t-3xl rounded-b-none'
-          // }`}
-        >
-          {/* YouTube iframe container — stays opacity:0 until the real video fires
-              its first PLAYING event (iframeVisible).  This hides the primer video
-              AND the brief blank iframe during player init.  Subsequent video
-              transitions are covered by BrandedLoadingOverlay instead. */}
           <div
             ref={youtubeContainerRef}
             className="absolute inset-0 w-full h-full"

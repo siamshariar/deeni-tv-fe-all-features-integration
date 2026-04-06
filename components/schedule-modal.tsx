@@ -10,11 +10,11 @@ import { useMediaQuery } from '@/hooks/use-media-query'
 interface ScheduleModalProps {
   isOpen: boolean
   onClose: () => void
-  schedule: VideoProgram[]
+  schedule?: VideoProgram[]
   currentProgramId?: string
 }
 
-export function ScheduleModal({ isOpen, onClose, schedule, currentProgramId }: ScheduleModalProps) {
+export function ScheduleModal({ isOpen, onClose, schedule = [], currentProgramId }: ScheduleModalProps) {
   const isMobile = useMediaQuery('(max-width: 640px)')
   
   // Filter out watched programs - only show current and upcoming

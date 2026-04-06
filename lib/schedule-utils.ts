@@ -509,6 +509,13 @@ export function getUpcomingPrograms(channelId: string, count: number = 15): Upco
 }
 
 /**
+ * Check scheduled preloads (for preload service)
+ */
+export function checkScheduledPreloads(channelId: string = getSavedChannel() || 'bangla-1'): ScheduledPreload[] {
+  return getUpcomingPrograms(channelId, 20).scheduledPreloads
+}
+
+/**
  * Get previous programs from localStorage for a channel
  */
 export function getPreviousPrograms(channelId: string, count: number = 15): VideoProgram[] {
