@@ -35,7 +35,15 @@ import {
   getStoredApiChannels,
   saveApiChannels,
 } from '@/lib/schedule-utils'
-import { useYouTubePlayer, YT_STATE } from '@/hooks/use-youtube-player'
+import { useYouTubePlayerModel as useYouTubePlayer, YT_STATE } from '@/components/player/youtube-player-model'
+import { IframePlayer } from '@/components/player/iframe-player'
+import { PlayerControls } from '@/components/ui/player-controls'
+import { ChannelSelectorModal } from '@/components/ui/channel-selector-modal'
+import { BrandedLoadingOverlay } from '@/components/ui/branded-loading-overlay'
+import { StartScreen } from '@/components/ui/start-screen'
+import { TapToUnmuteScreen } from '@/components/ui/tap-to-unmute-screen'
+import { ProgramOverlay } from '@/components/ui/program-overlay'
+import { DesktopTicker, MobileTicker } from '@/components/ui/tickers'
 import { PreviousVideosModal } from './previous-videos-modal'
 
 interface SyncedVideoPlayerProps {
@@ -55,781 +63,7 @@ interface SyncedVideoPlayerProps {
   triggerReload?: number
 }
 
-// Channel Selector Modal Component
-const ChannelSelectorModal = ({ 
-  isOpen, 
-  onClose, 
-  channels, 
-  onSelectChannel, 
-  currentChannelId 
-}: { 
-  isOpen: boolean
-  onClose: () => void
-  channels: ApiChannel[]
-  onSelectChannel: (channelId: string) => void
-  currentChannelId?: string
-}) => {
-  const isMobile = useMediaQuery('(max-width: 640px)')
-  const [searchTerm, setSearchTerm] = useState('')
-  
-  const filteredChannels = channels.filter(channel => 
-    channel.title.toLowerCase().includes(searchTerm.toLowerCase())
-  )
-  
-  return (
-    <AnimatePresence>
-      {isOpen && (
-        <>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="fixed inset-0 bg-black/90 backdrop-blur-xl z-[60]"
-          />
-          
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className={`fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full ${
-              isMobile ? 'max-w-sm' : 'max-w-2xl'
-            } bg-gradient-to-br from-zinc-900 via-zinc-900 to-zinc-950 rounded-2xl shadow-2xl border border-white/10 z-[70] overflow-hidden`}
-          >
-            <div className="relative overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-r from-primary/20 via-purple-500/20 to-primary/20 animate-gradient" />
-              <div className="relative flex items-center justify-between p-6 border-b border-white/10">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-primary/20 rounded-xl">
-                    <Globe className="h-5 w-5 text-primary" />
-                  </div>
-                  <h2 className="text-xl font-bold text-white">Select Channel</h2>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={onClose}
-                  className="text-white/60 hover:text-white hover:bg-white/10 rounded-xl"
-                >
-                  <X className="h-5 w-5" />
-                </Button>
-              </div>
-            </div>
-            
-            {/* <div className="p-4 border-b border-white/10">
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="Search channels..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full px-4 py-3 pl-11 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
-                />
-                <Globe className="absolute left-3 top-3.5 h-4 w-4 text-white/40" />
-              </div>
-            </div> */}
-            
-            <div className="p-4 max-h-[60vh] overflow-y-auto custom-scrollbar">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {filteredChannels.map((channel, index) => (
-                  <motion.button
-                    key={channel.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                    whileHover={{ scale: 1.02, y: -2 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => {
-                      onSelectChannel(String(channel.id))
-                      onClose()
-                    }}
-                    className={`relative group p-4 rounded-xl border transition-all ${
-                      String(channel.id) === currentChannelId
-                        ? 'bg-gradient-to-br from-primary/20 via-primary/10 to-transparent border-primary/50 shadow-lg shadow-primary/20'
-                        : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20'
-                    }`}
-                  >
-                    {String(channel.id) === currentChannelId && (
-                      <motion.div
-                        className="absolute inset-0 rounded-xl bg-primary/20"
-                        animate={{
-                          scale: [1, 1.05, 1],
-                          opacity: [0.3, 0.5, 0.3],
-                        }}
-                        transition={{
-                          duration: 2,
-                          repeat: Infinity,
-                          ease: "easeInOut",
-                        }}
-                      />
-                    )}
-                    
-                    <div className="relative flex items-center gap-3">
-                      {/* <div className="text-lg filter drop-shadow-lg">
-                        {channel.isQuran ? '📖' : '📺'}
-                      </div> */}
-                      <div className="flex-1 text-left">
-                        <p className={`font-semibold ${
-                          String(channel.id) === currentChannelId ? 'text-primary' : 'text-white'
-                        }`}>
-                          {channel.title}
-                        </p>
-                      </div>
-                      {String(channel.id) === currentChannelId && (
-                        <div className="px-2 py-1 bg-primary/20 rounded-full">
-                          <span className="text-primary text-xs font-medium">Current</span>
-                        </div>
-                      )}
-                    </div>
-                  </motion.button>
-                ))}
-              </div>
-            </div>
-            
-            <div className="p-4 border-t border-white/10 bg-white/5">
-              <p className="text-center text-xs text-white/40">
-                {filteredChannels.length} channels available • Select your preferred channel
-              </p>
-            </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
-  )
-}
-
-// Start Screen Component - Fully responsive for all screen sizes
-const StartScreen = ({ onPlayClick }: { onPlayClick: () => void }) => {
-  const isMobile = useMediaQuery('(max-width: 640px)')
-  const isTablet = useMediaQuery('(min-width: 641px) and (max-width: 1024px)')
-  
-  return (
-    <motion.div 
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-zinc-900 via-zinc-900 to-black z-50 overflow-hidden"
-    >      <motion.div
-        initial={{ scale: 0.9, y: 20 }}
-        animate={{ scale: 1, y: 0 }}
-        transition={{ type: "spring", damping: 20, stiffness: 200 }}
-        className="relative w-full h-full flex items-center justify-center p-4 sm:p-6 md:p-8"
-      >
-        <div className="w-full max-w-xs sm:max-w-sm md:max-w-lg lg:max-w-2xl flex flex-col items-center gap-2 sm:gap-3 md:gap-4">
-          {/* App Logo with Animation */}
-          <div className="relative flex items-center justify-center">
-            <div className={`relative flex items-center justify-center ${
-              isMobile ? 'w-16 h-16' : isTablet ? 'w-24 h-24' : 'w-32 h-32'
-            }`}>
-              <motion.div
-                animate={{ 
-                  rotate: 360,
-                  scale: [1, 1.03, 1],
-                }}
-                transition={{ 
-                  rotate: { duration: 3, repeat: Infinity, ease: "linear" },
-                  scale: { duration: 2, repeat: Infinity, ease: "easeInOut" }
-                }}
-                className="relative flex items-center justify-center"
-              >
-                <div className={`absolute rounded-full bg-primary/20 blur-xl animate-pulse ${
-                  isMobile ? 'w-12 h-12' : isTablet ? 'w-20 h-20' : 'w-28 h-28'
-                }`} />
-                <Radio className={`${
-                  isMobile ? 'h-8 w-8' : 
-                  isTablet ? 'h-14 w-14' : 
-                  'h-20 w-20'
-                } text-primary relative z-10 flex-shrink-0`} />
-                
-                <motion.div
-                  animate={{ y: ['-50%', '150%'] }}
-                  transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                  className="absolute inset-0 w-full h-1 bg-gradient-to-r from-transparent via-primary/50 to-transparent blur-sm pointer-events-none"
-                />
-              </motion.div>
-            </div>
-          </div>
-          
-          {/* Logo with full branding */}
-          <motion.div
-            className="flex items-center justify-center"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-          >
-            <img 
-              src="/DeeniTV-V-2.png" 
-              alt="Deeni.tv - Your Spiritual TV Experience"
-              className={isMobile ? 'h-8' : isTablet ? 'h-10' : 'h-12'}
-            />
-          </motion.div>
-          
-          <motion.p 
-            className={`text-white/60 text-center ${
-              isMobile ? 'text-xs' : isTablet ? 'text-sm' : 'text-base'
-            }`}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-          >
-            Your Spiritual TV Experience
-          </motion.p>
-          
-          {/* Feature badges - hidden on very small mobile, shown on larger */}
-          {!isMobile && (
-            <motion.div 
-              className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 }}
-            >
-              {[
-                { icon: Zap, text: 'Live TV' },
-                { icon: Shield, text: 'Halal Content' },
-                { icon: Sparkles, text: 'Premium' },
-              ].map((item, i) => (
-                <motion.div
-                  key={i}
-                  whileHover={{ scale: 1.05 }}
-                  className="flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 bg-white/5 rounded-full border border-white/10"
-                >
-                  <item.icon className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-primary flex-shrink-0" />
-                  <span className="text-[10px] sm:text-xs text-white/80 whitespace-nowrap">{item.text}</span>
-                </motion.div>
-              ))}
-            </motion.div>
-          )}
-          
-          {/* Start button - always visible */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5 }}
-            className="flex justify-center mt-1 sm:mt-2"
-          >
-            <Button
-              onClick={onPlayClick}
-              size={isMobile ? 'default' : 'lg'}
-              className={`relative group bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 text-white rounded-full shadow-2xl shadow-primary/30 overflow-hidden ${
-                isMobile ? 'px-5 py-3 text-sm' : isTablet ? 'px-6 py-4 text-base' : 'px-8 py-5 text-lg'
-              }`}
-            >
-              <span className="relative z-10 flex items-center gap-2">
-                <PlayCircle className={isMobile ? 'h-4 w-4' : 'h-5 w-5'} />
-                <span className="font-bold">Start Watching</span>
-              </span>
-              <motion.div
-                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
-                animate={{ x: ['-100%', '100%'] }}
-                transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
-              />
-            </Button>
-          </motion.div>
-          
-          <motion.p 
-            className={`text-white/40 text-center ${isMobile ? 'text-[9px]' : 'text-[11px]'}`}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.6 }}
-          >
-            Click to start your spiritual journey
-          </motion.p>
-        </div>
-      </motion.div>
-    </motion.div>
-  )
-}
-
-// ── Tap-to-Unmute Screen ──
-// Full-screen overlay (same style as StartScreen) shown when the player is
-// muted and waiting for a user gesture — required on iOS for audio autoplay.
-const TapToUnmuteScreen = ({ onUnmuteClick }: { onUnmuteClick: () => void }) => {
-  const isMobile = useMediaQuery('(max-width: 640px)')
-  const isTablet = useMediaQuery('(min-width: 641px) and (max-width: 1024px)')
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-zinc-900 via-zinc-900 to-black z-50 overflow-hidden"
-    >
-      <motion.div
-        initial={{ scale: 0.9, y: 20 }}
-        animate={{ scale: 1, y: 0 }}
-        transition={{ type: 'spring', damping: 20, stiffness: 200 }}
-        className="relative w-full h-full flex items-center justify-center p-4 sm:p-6 md:p-8"
-      >
-        <div className="w-full max-w-xs sm:max-w-sm md:max-w-lg lg:max-w-2xl flex flex-col items-center gap-2 sm:gap-3 md:gap-4">
-          {/* Icon */}
-          <div className="relative flex items-center justify-center">
-            <div className={`relative flex items-center justify-center ${
-              isMobile ? 'w-16 h-16' : isTablet ? 'w-24 h-24' : 'w-32 h-32'
-            }`}>
-              <motion.div
-                animate={{ scale: [1, 1.06, 1] }}
-                transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
-                className="relative flex items-center justify-center"
-              >
-                <div className={`absolute rounded-full bg-primary/20 blur-xl animate-pulse ${
-                  isMobile ? 'w-12 h-12' : isTablet ? 'w-20 h-20' : 'w-28 h-28'
-                }`} />
-                <VolumeX className={`${
-                  isMobile ? 'h-8 w-8' :
-                  isTablet ? 'h-14 w-14' :
-                  'h-20 w-20'
-                } text-primary relative z-10 flex-shrink-0`} />
-              </motion.div>
-            </div>
-          </div>
-
-          {/* Logo */}
-          <motion.div
-            className="flex items-center justify-center"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-          >
-            <img
-              src="/DeeniTV-V-2.png"
-              alt="Deeni.tv"
-              className={isMobile ? 'h-8' : isTablet ? 'h-10' : 'h-12'}
-            />
-          </motion.div>
-
-          <motion.p
-            className={`text-white/60 text-center ${
-              isMobile ? 'text-xs' : isTablet ? 'text-sm' : 'text-base'
-            }`}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-          >
-            Video is playing — audio is muted
-          </motion.p>
-
-          {/* Unmute button */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5 }}
-            className="flex justify-center mt-1 sm:mt-2"
-          >
-            <Button
-              onClick={onUnmuteClick}
-              size={isMobile ? 'default' : 'lg'}
-              className={`relative group bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 text-white rounded-full shadow-2xl shadow-primary/30 overflow-hidden touch-manipulation ${
-                isMobile ? 'px-5 py-3 text-sm' : isTablet ? 'px-6 py-4 text-base' : 'px-8 py-5 text-lg'
-              }`}
-            >
-              <span className="relative z-10 flex items-center gap-2">
-                <Volume2 className={isMobile ? 'h-4 w-4' : 'h-5 w-5'} />
-                <span className="font-bold">Tap to Unmute</span>
-              </span>
-              <motion.div
-                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
-                animate={{ x: ['-100%', '100%'] }}
-                transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
-              />
-            </Button>
-          </motion.div>
-
-          <motion.p
-            className={`text-white/40 text-center ${isMobile ? 'text-[9px]' : 'text-[11px]'}`}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.6 }}
-          >
-            Tap the button above to enable audio
-          </motion.p>
-        </div>
-      </motion.div>
-    </motion.div>
-  )
-}
-
-// Live Badge Component
-const LiveBadge = ({ variant = 'default', isMobile = false }: { variant?: 'default' | 'transparent', isMobile?: boolean }) => {
-  // Component is kept for potential future use but not displayed per requirements
-  return null
-}
-
-// Branded Loading Overlay - Shows during YouTube iframe loading (event-based, not timer-based)
-const BrandedLoadingOverlay = ({ 
-  isVisible, 
-  programName 
-}: { 
-  isVisible: boolean
-  programName: string
-}) => {
-  return (
-    <AnimatePresence>
-      {isVisible && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.3 }}
-          className="absolute inset-0 z-[45] flex flex-col items-center justify-center bg-gradient-to-br from-zinc-900 via-zinc-950 to-black"
-        >
-          {/* Background pattern */}
-          <div className="absolute inset-0 opacity-5">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.1)_0%,transparent_50%)]" />
-          </div>
-          
-          {/* Logo and branding — fully responsive sizing */}
-          <motion.div
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: 0.1, type: "spring", damping: 20 }}
-            className="relative flex flex-col items-center gap-2.5 sm:gap-3 md:gap-4"
-          >
-            {/* Spinning loader ring + logo — scales with viewport */}
-            <div className="relative flex items-center justify-center w-[14vmin] h-[14vmin] min-w-[3.5rem] min-h-[3.5rem] max-w-[7rem] max-h-[7rem] sm:min-w-[4.5rem] sm:min-h-[4.5rem] sm:max-w-[8rem] sm:max-h-[8rem] md:max-w-[9rem] md:max-h-[9rem]">
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                className="absolute inset-0 rounded-full border-2 border-primary/20"
-              />
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
-                className="absolute inset-0 rounded-full border-t-2 border-primary"
-              />
-              {/* Logo image — 40% of the spinner circle */}
-              <img 
-                src="/DeeniTV-V-2.png" 
-                alt="Deeni.tv"
-                className="h-[40%] w-auto object-contain"
-              />
-            </div>
-            
-            {/* Program name banner */}
-            <div className="max-w-[85%] sm:max-w-md md:max-w-lg text-center px-3 sm:px-5 md:px-6">
-              <motion.div
-                initial={{ y: 10, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.2 }}
-                className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl px-3 py-2 sm:px-4 sm:py-2.5 md:px-5 md:py-3"
-              >
-                <p className="text-white/50 uppercase tracking-wider font-medium text-[7px] sm:text-[9px] md:text-[10px] mb-0.5 sm:mb-1">
-                  Watching
-                </p>
-                <h3 className="text-white font-bold leading-tight line-clamp-2 text-sm sm:text-base md:text-lg lg:text-xl">
-                  {programName || 'Loading program...'}
-                </h3>
-              </motion.div>
-            </div>
-            
-            {/* Loading bar animation */}
-            <motion.div 
-              className="w-[25vmin] min-w-[6rem] max-w-[12rem] h-1 bg-white/10 rounded-full overflow-hidden"
-            >
-              <motion.div
-                animate={{ x: ['-100%', '100%'] }}
-                transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }}
-                className="h-full w-full bg-gradient-to-r from-transparent via-primary to-transparent"
-              />
-            </motion.div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  )
-}
-
-// Program Overlay Component - Auto-appearing Now Playing bar (ticker-style)
-const ProgramOverlay = ({ 
-  currentProgram, 
-  nextProgram, 
-  isVisible,
-  isMobile 
-}: { 
-  currentProgram: VideoProgram | null
-  nextProgram: VideoProgram | null
-  isVisible: boolean
-  isMobile: boolean
-}) => {
-  return (
-    <AnimatePresence>
-      {isVisible && currentProgram && (
-        <motion.div
-          initial={{ opacity: 0, x: isMobile ? 0 : 50, y: isMobile ? -20 : 0 }}
-          animate={{ opacity: 1, x: 0, y: 0 }}
-          exit={{ opacity: 0, x: isMobile ? 0 : 50, y: isMobile ? -20 : 0 }}
-          transition={{ duration: 0.4 }}
-          className={`absolute z-30 ${
-            isMobile ? 'top-2 left-2 right-2' : 'top-4 left-4 right-1/3'
-          }`}
-        >
-          {/* <div className={`backdrop-blur-xl bg-black/70 border border-white/10 rounded-xl ${
-            isMobile ? 'p-2' : 'p-3'
-          } shadow-2xl`}> */}
-            {/* Now Playing - Just name */}
-            {/* <div className="flex items-center gap-2 mb-0.5">
-              <span className="relative flex h-1.5 w-1.5 md:h-2 md:w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 md:h-2 md:w-2 bg-primary"></span>
-              </span>
-              <span className={`text-primary font-bold ${isMobile ? 'text-[8px]' : 'text-xs'} uppercase tracking-wider`}>
-                Now Playing
-              </span>
-            </div>
-            <h3 className={`text-white font-bold ${isMobile ? 'text-[11px] leading-tight' : 'text-sm'} line-clamp-1`}>
-              {currentProgram.title}
-            </h3> */}
-            
-            {/* Up Next - Just name */}
-            {/* {nextProgram && (
-              // <div className={`pt-0.5 md:pt-1 border-t border-white/10 ${isMobile ? 'mt-1' : 'mt-1.5'}`}>
-              //   <div className="flex items-center gap-1 md:gap-2 mb-0.5">
-              //     <ArrowRight className={`text-yellow-300 ${isMobile ? 'h-2 w-2' : 'h-3 w-3'}`} />
-              //     <span className={`text-yellow-300 font-bold ${isMobile ? 'text-[8px]' : 'text-xs'} uppercase tracking-wider`}>
-              //       Up Next
-              //     </span>
-              //   </div>
-              //   <p className={`text-white/80 ${isMobile ? 'text-[10px] leading-tight' : 'text-sm'} line-clamp-1`}>
-              //     {nextProgram.title}
-              //   </p>
-              // </div>
-            )} */}
-          {/* </div> */}
-        </motion.div>
-      )}
-    </AnimatePresence>
-  )
-}
-
-// Deeni.tv Logo Component
-const DeeniLogo = ({ isMobile = false }: { isMobile?: boolean }) => {
-  return (
-    <motion.div 
-      initial={{ opacity: 0, x: -20 }}
-      animate={{ opacity: 1, x: 0 }}
-      className="flex items-center"
-    >
-      <img 
-        src="/DeeniTV-V-2.png" 
-        alt="Deeni.tv"
-        className={isMobile ? 'h-4' : 'h-6'}
-      />
-    </motion.div>
-  )
-}
-
-// Desktop Ticker Component - Enhanced bold text, 360-degree infinite scroll
-const DesktopTicker = ({ videos, currentIndex, totalPrograms, currentProgramId }: { 
-  videos: VideoProgram[], 
-  currentIndex: number,
-  totalPrograms: number,
-  currentProgramId?: string
-}) => {
-  if (videos.length === 0) {
-    return (
-      <div className="relative flex overflow-hidden h-full items-center">
-        <motion.div 
-          animate={{ x: [0, -500] }} 
-          transition={{ duration: 20, repeat: Infinity, ease: "linear", repeatType: "loop" }}
-          className="whitespace-nowrap"
-        >
-          <span className="text-white/90 font-bold px-4 text-sm">
-            <RadioIcon className="inline h-3 w-3 mr-2 text-primary animate-pulse" />
-            More content coming...
-          </span>
-        </motion.div>
-      </div>
-    )
-  }
-
-  const items: React.ReactElement[] = []
-  const repeatCount = 40 // Very high for true 360-degree infinite loop
-  
-  for (let i = 0; i < repeatCount; i++) {
-    videos.forEach((video, index) => {
-      const isNextVideo = index === 0 // Only the first video in the list is "NEXT"
-      const isCurrentVideo = video.id === currentProgramId
-      const prefix = isNextVideo ? 'NEXT' : 'UP NEXT'
-      const duration = formatTime(video.duration)
-      
-      if (isCurrentVideo) return;
-      
-      items.push(
-        <div key={`${video.id}-${i}-${index}`} className="inline-flex items-center mx-5">
-          <span className={`
-            px-2 py-0.5 rounded-full text-xs font-black mr-3 whitespace-nowrap
-            ${isNextVideo 
-              ? 'bg-yellow-500/30 text-yellow-300 border border-yellow-500/70 shadow-lg shadow-yellow-500/30 font-extrabold' 
-              : 'bg-white/30 text-white border border-white/40 shadow-lg font-bold'
-            }
-          `}>
-            {prefix}
-          </span>
-          <span className={`font-black text-sm whitespace-nowrap tracking-wide ${
-            isNextVideo ? 'text-yellow-300 font-extrabold' : 'text-white'
-          }`}>
-            {video.title}
-          </span>
-          <span className={`ml-3 font-mono text-sm font-black whitespace-nowrap ${
-            isNextVideo ? 'text-yellow-300' : 'text-white/80'
-          }`}>
-            {duration}
-          </span>
-        </div>
-      )
-    })
-  }
-
-  return (
-    <div className="relative flex overflow-hidden h-full items-center group">
-      {/* Gradient Fades */}
-      <div className="absolute left-0 top-0 bottom-0 w-16 bg-gradient-to-r from-black/95 to-transparent z-10 pointer-events-none" />
-      <div className="absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-black/95 to-transparent z-10 pointer-events-none" />
-      
-      {/* Infinite Scrolling - 360-degree never ends */}
-      <motion.div
-        className="flex whitespace-nowrap"
-        animate={{ x: [0, -20000] }}
-        transition={{ 
-          duration: 150, 
-          repeat: Infinity, 
-          ease: "linear",
-          repeatType: "loop"
-        }}
-        style={{ willChange: "transform" }}
-      >
-        {items}
-      </motion.div>
-    </div>
-  )
-}
-
-// Mobile Ticker Component - Ultra compact with more items
-const MobileTicker = ({ videos, currentIndex, totalPrograms, currentProgramId }: { 
-  videos: VideoProgram[], 
-  currentIndex: number,
-  totalPrograms: number,
-  currentProgramId?: string
-}) => {
-  if (videos.length === 0) {
-    return (
-      <div className="relative flex overflow-hidden h-full items-center">
-        <motion.div 
-          animate={{ x: [0, -300] }} 
-          transition={{ duration: 20, repeat: Infinity, ease: "linear", repeatType: "loop" }}
-          className="whitespace-nowrap"
-        >
-          <span className="text-white/90 font-bold px-2 text-[10px]">
-            More content coming...
-          </span>
-        </motion.div>
-      </div>
-    )
-  }
-
-  const items: React.ReactElement[] = []
-  const repeatCount = 40 // Increased for smoother infinite loop
-  
-  for (let i = 0; i < repeatCount; i++) {
-    videos.forEach((video, index) => {
-      const isNextVideo = index === 0 // Only the first video in the list is "NEXT"
-      const isCurrentVideo = video.id === currentProgramId
-      const prefix = isNextVideo ? 'NEXT' : 'UP NEXT'
-      const duration = formatTime(video.duration)
-      
-      if (isCurrentVideo) return;
-      
-      items.push(
-        <div key={`${video.id}-${i}-${index}`} className="inline-flex items-center mx-2">
-          <span className={`
-            px-1.5 py-0.5 rounded-full text-[8px] font-black mr-1.5 whitespace-nowrap
-            ${isNextVideo 
-              ? 'bg-yellow-500/30 text-yellow-300 border border-yellow-500/70 shadow-sm font-extrabold' 
-              : 'bg-white/30 text-white border border-white/40 shadow-sm font-bold'
-            }
-          `}>
-            {prefix}
-          </span>
-          <span className={`font-black text-[10px] whitespace-nowrap tracking-wide ${
-            isNextVideo ? 'text-yellow-300 font-extrabold' : 'text-white'
-          }`}>
-            {video.title}
-          </span>
-          <span className={`ml-1.5 font-mono text-[9px] font-black whitespace-nowrap ${
-            isNextVideo ? 'text-yellow-300' : 'text-white/80'
-          }`}>
-            {duration}
-          </span>
-        </div>
-      )
-    })
-  }
-
-  return (
-    <div className="relative flex overflow-hidden h-full items-center">
-      {/* Gradient Fades - Smaller on mobile */}
-      <div className="absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-black/95 to-transparent z-10 pointer-events-none" />
-      <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-black/95 to-transparent z-10 pointer-events-none" />
-      
-      {/* Infinite Scrolling - 360-degree never ends - Standard TV news speed */}
-      <motion.div
-        className="flex whitespace-nowrap"
-        animate={{ x: [0, -15000] }}
-        transition={{ 
-          duration: 180, 
-          repeat: Infinity, 
-          ease: "linear",
-          repeatType: "loop"
-        }}
-        style={{ willChange: "transform" }}
-      >
-        {items}
-      </motion.div>
-    </div>
-  )
-}
-
-// Modern Time Display Component
-const ModernTimeDisplay = () => {
-  const [time, setTime] = useState(new Date())
-  
-  useEffect(() => {
-    const timer = setInterval(() => setTime(new Date()), 1000)
-    return () => clearInterval(timer)
-  }, [])
-  
-  const formattedTime = time.toLocaleTimeString('en-US', { 
-    hour: '2-digit', 
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: true 
-  })
-  
-  const formattedDate = time.toLocaleDateString('en-US', { 
-    weekday: 'short',
-    month: 'short', 
-    day: 'numeric'
-  })
-  
-  return (
-    <motion.div 
-      initial={{ y: -20, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      className="absolute top-4 right-4 z-40"
-    >
-      <div className="flex items-center gap-3 px-4 py-2 bg-black/60 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl">
-        <Clock className="h-4 w-4 text-primary" />
-        <span className="text-white font-semibold text-sm tracking-wide">
-          {formattedTime}
-        </span>
-        <div className="w-px h-4 bg-white/20" />
-        <span className="text-white/80 text-xs font-medium">
-          {formattedDate}
-        </span>
-      </div>
-    </motion.div>
-  )
-}
+// UI components are now imported from components/ui/* (cleaner, reusable architecture)
 
 export function SyncedVideoPlayer({ 
   onMenuOpen, 
@@ -882,9 +116,17 @@ export function SyncedVideoPlayer({
   const brandedOverlayProgramRef = useRef<string>('')
   // iframeVisible — keeps the iframe container at opacity:0 until the REAL video
   // fires its first PLAYING event.  Prevents the primer (zoo) video from flashing
-  // on screen.  Once true it stays true; subsequent transitions are hidden by
-  // BrandedLoadingOverlay sitting on top instead.
+  // on screen.
   const [iframeVisible, setIframeVisible] = useState(false)
+
+  // Hide the branded loading overlay as soon as the real iframe starts rendering.
+  // This ensures the overlay is visible while the iframe is still loading and
+  // automatically disappears when playback begins.
+  useEffect(() => {
+    if (iframeVisible) {
+      setShowBrandedOverlay(false)
+    }
+  }, [iframeVisible])
   
   // Channel State
   const [apiChannels, setApiChannels] = useState<ApiChannel[]>([])
@@ -929,6 +171,11 @@ export function SyncedVideoPlayer({
   const timeUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const videoEndTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const isTransitioningRef = useRef(false)
+  // Prevent double-loads when the app quickly loses/regains focus (or user taps reload fast)
+  const isStreamLoadingRef = useRef(false)
+  // Track whether the app is currently in the background (visibility API)
+  const appInBackgroundRef = useRef(false)
+  
   // "Latest value" refs — used inside syncWithServer so we don't need those values
   // in the useCallback dependency array (which would reset the 5-min interval on each video change)
   const currentProgramRef = useRef<VideoProgram | null>(null)
@@ -1336,7 +583,9 @@ export function SyncedVideoPlayer({
   useEffect(() => { syncImmediateAfterTransitionRef.current = syncImmediateAfterTransition }, [syncImmediateAfterTransition])
 
   const loadChannel = useCallback(async (channelId: string) => {
-    if (isLoading) return
+    // Prevent concurrent loads (e.g. multiple visibilitychange events / rapid reload taps)
+    if (isLoading || isStreamLoadingRef.current) return
+    isStreamLoadingRef.current = true
     
     setIsLoading(true)
     setApiError(null)
@@ -1408,6 +657,13 @@ export function SyncedVideoPlayer({
       setDisplayTime(formatTime(startTime))
       setTimeRemaining(formatTime(timeRemaining))
       setVideoDuration(program.duration)
+
+      // If this is the first load (no previous history), add the current video
+      // to the history so the Previous Programs list isn't empty on first open.
+      if (savedPrevious.length === 0) {
+        const updatedPrev = addToPreviousVideos(channelId, program)
+        setPreviousVideos(updatedPrev)
+      }
       
       // Get next program from upcomingPrograms
       if (result.upcomingPrograms && result.upcomingPrograms.length > 0) {
@@ -1453,29 +709,39 @@ export function SyncedVideoPlayer({
       // Notify parent with fresh schedule data so ScheduleModal is up-to-date
       notifyParentScheduleChange(program, upcoming)
       
-      // Previous videos: localStorage (real user history) always takes priority.
-      // API previousPrograms are only schedule-calculated — treat them as optional extras.
-      const existingPrevious = getPreviousVideos(channelId)
-      if (existingPrevious.length > 0) {
-        // User has real watch history — use it as-is, don't let API overwrite order
-        setPreviousVideos(existingPrevious)
-      } else if (result.previousPrograms && result.previousPrograms.length > 0) {
-        // No local history yet — seed from API schedule data as a starting point
-        const apiPrevious: VideoProgram[] = result.previousPrograms.map((prog: { ytVideoId: string; title: string; duration: number }) => ({
-          id: prog.ytVideoId,
-          videoId: prog.ytVideoId,
-          title: prog.title,
-          description: prog.title,
-          duration: prog.duration,
-          category: 'Lecture',
-          language: 'Bengali',
-          channelId: channelId,
-          thumbnail: `https://img.youtube.com/vi/${prog.ytVideoId}/maxresdefault.jpg`
-        }))
-        setPreviousVideos(apiPrevious.slice(0, 30))
-        savePreviousVideos(channelId, apiPrevious.slice(0, 30))
+      // Prefer the server's previous-program list (most accurate). When we must
+      // fall back to the local schedule (e.g. /api/current-video gets a local
+      // fallback), we do NOT want to show stale historical data.
+      const isLocalFallback = result._source === 'local-schedule'
+      const apiPrevious: VideoProgram[] = isLocalFallback
+        ? []
+        : (result.previousPrograms || []).map((prog: { ytVideoId: string; title: string; duration: number }) => ({
+            id: prog.ytVideoId,
+            videoId: prog.ytVideoId,
+            title: prog.title,
+            description: prog.title,
+            duration: prog.duration,
+            category: 'Lecture',
+            language: 'Bengali',
+            channelId: channelId,
+            thumbnail: `https://img.youtube.com/vi/${prog.ytVideoId}/maxresdefault.jpg`
+          }))
+
+      if (!isLocalFallback && apiPrevious.length > 0) {
+        const existingPrevious = getPreviousVideos(channelId)
+        const mergedPrevious = [
+          ...apiPrevious,
+          ...existingPrevious.filter(v => !apiPrevious.some(api => api.id === v.id))
+        ].slice(0, 30)
+
+        setPreviousVideos(mergedPrevious)
+        savePreviousVideos(channelId, mergedPrevious)
+      } else {
+        // No server-provided previous program data — clear any stale history
+        setPreviousVideos([])
+        savePreviousVideos(channelId, [])
       }
-      
+
       lastVideoIdRef.current = program.videoId
       
       // No branded overlay on initial channel load — only on video transitions (playNextVideo)
@@ -1608,7 +874,9 @@ export function SyncedVideoPlayer({
               setIframeVisible(true) // Reveal iframe — real video is now rendering
               setIsMuted(false)
               onStartClick?.()
-              setTimeout(() => setShowBrandedOverlay(false), 3000)
+              // Keep the branded overlay visible for a short moment after playback starts
+              // (previously ~4s; adjust here if you want a longer/shorter delay)
+              setTimeout(() => setShowBrandedOverlay(false), 4000)
             } else if (state === YT_STATE.PAUSED) {
               // iOS sometimes auto-pauses; resume
               play()
@@ -1693,7 +961,7 @@ export function SyncedVideoPlayer({
               setIframeVisible(true)
               setTimeout(() => {
                 setShowBrandedOverlay(false) // Hide branded overlay when playback starts
-              }, 3000);
+              }, 4000);
               
             } else if (state === YT_STATE.PAUSED) {
               console.log('⏸️ 22 Video paused - resuming')
@@ -1728,6 +996,8 @@ export function SyncedVideoPlayer({
       console.error('API call failed:', error)
       setApiError(error instanceof Error ? error.message : 'Failed to load video')
       setIsLoading(false)
+    } finally {
+      isStreamLoadingRef.current = false
     }
   }, [isLoading, playerReady, isPrimedRef, volume, initializePlayer, loadVideo, seekTo, play, setYouTubeVolume, setYouTubeMuted, onChannelChange, onStartClick, getDuration, fetchFromBrowserAPI, notifyParentScheduleChange])
 
@@ -1795,9 +1065,26 @@ export function SyncedVideoPlayer({
 
     // Then, try to refresh channels from API
     try {
-      const res = await clientFetchWithAuth('https://api.deeniinfotech.com/api/tv-channels')
-      if (res?.data?.length) {
-        const freshChannels = res.data
+      let res = null
+
+      try {
+        res = await clientFetchWithAuth('https://api.deeniinfotech.com/api/tv-channels')
+      } catch (err) {
+        console.warn('clientFetchWithAuth failed for tv-channels, trying plain fetch fallback', err)
+      }
+
+      if (!res) {
+        const fallbackRes = await fetch('/api/tv-channels')
+        if (fallbackRes.ok) {
+          res = await fallbackRes.json()
+        } else {
+          throw new Error(`Fallback /api/tv-channels failed ${fallbackRes.status}`)
+        }
+      }
+
+      const data = res?.data || res
+      if (data?.length) {
+        const freshChannels = data
         const storedChannels = getStoredApiChannels()
 
         // Check if there are differences
@@ -2014,6 +1301,36 @@ export function SyncedVideoPlayer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [triggerReload])
 
+  // Handle app background/resume so we always show a fresh live stream on return
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        appInBackgroundRef.current = true
+        console.log('🌙 App hidden — stopping stream and releasing player')
+        setPlayerReady(false)
+        setIframeVisible(false)
+        setShowBrandedOverlay(false)
+        setShowProgramOverlay(false)
+        setIsLoading(false)
+        destroy()
+      } else if (appInBackgroundRef.current) {
+        appInBackgroundRef.current = false
+        console.log('☀️ App resumed — refreshing live stream')
+        if (currentChannelId && !showStartScreen) {
+          // Show loading state immediately to avoid black/paused frames
+          setIsLoading(true)
+          setShowBrandedOverlay(true)
+          setIframeVisible(false)
+          setApiError(null)
+          loadChannel(currentChannelId)
+        }
+      }
+    }
+
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
+  }, [currentChannelId, loadChannel, destroy, showStartScreen])
+
   // Handle playing from previous videos
   const handlePlayFromPrevious = useCallback((video: VideoProgram) => {
     if (!currentChannelId || !playerReady || isTransitioningRef.current) return
@@ -2131,7 +1448,7 @@ export function SyncedVideoPlayer({
     const overlayInterval = setInterval(() => {
       setShowProgramOverlay(true)
       // Hide after 8-10 seconds
-      const hideDelay = 8000 + Math.random() * 2000 // Random 8-10 seconds
+      const hideDelay = 8000 + Math.random() * 4000 // Random 8-10 seconds
       setTimeout(() => {
         setShowProgramOverlay(false)
       }, hideDelay)
@@ -2141,7 +1458,7 @@ export function SyncedVideoPlayer({
     const initialTimeout = setTimeout(() => {
       setShowProgramOverlay(true)
       // Hide after 8-10 seconds
-      const hideDelay = 8000 + Math.random() * 2000 // Random 8-10 seconds
+      const hideDelay = 8000 + Math.random() * 4000 // Random 8-10 seconds
       setTimeout(() => {
         setShowProgramOverlay(false)
       }, hideDelay)
@@ -2168,7 +1485,9 @@ export function SyncedVideoPlayer({
       if (videoEndTimeoutRef.current) {
         clearTimeout(videoEndTimeoutRef.current)
       }
-      //destroy()
+      // Ensure the YouTube player is destroyed on unmount so we don't leak
+      // memory or keep the iframe active when the user navigates away.
+      destroy()
     }
   }, [destroy])
 
@@ -2266,28 +1585,14 @@ export function SyncedVideoPlayer({
         isTablet ? 'w-[90vw]' :
         'w-full'
       }`}>
-        <div 
-          ref={playerRef}
-           className={`relative w-full aspect-video bg-black/50 backdrop-blur-sm overflow-hidden shadow-2xl border border-white/10 border-b-0 transition-all duration-300 rounded-t-2xl md:rounded-t-3xl rounded-b-none'
-          }`}
-          // className={`relative w-full aspect-video bg-black/50 backdrop-blur-sm overflow-hidden shadow-2xl border border-white/10 border-b-0 transition-all duration-300 ${
-          //   isFullscreen ? 'rounded-none border-0' : 'rounded-t-2xl md:rounded-t-3xl rounded-b-none'
-          // }`}
-        >
-          {/* YouTube iframe container — stays opacity:0 until the real video fires
-              its first PLAYING event (iframeVisible).  This hides the primer video
-              AND the brief blank iframe during player init.  Subsequent video
-              transitions are covered by BrandedLoadingOverlay instead. */}
-          <div
-            ref={youtubeContainerRef}
-            className="absolute inset-0 w-full h-full"
-            style={{ opacity: iframeVisible ? 1 : 0 }}
-          />
-          <div className="absolute inset-0 w-full h-full pointer-events-auto" />
-          
-          {/* Branded Loading Overlay - Shows during YouTube loading, hides on PLAYING event */}
+                <IframePlayer containerRef={youtubeContainerRef} iframeVisible={iframeVisible}>
+          {/* YouTube iframe container is rendered by IframePlayer.
+              IframePlayer manages opacity (iframeVisible) and pointer-events.
+              Child overlays are layered on top. */}
+
+          {/* Branded Loading Overlay - Shows while the iframe is still loading and hides when the video starts playing */}
           <BrandedLoadingOverlay
-            isVisible={showBrandedOverlay && !showStartScreen && !isLoading}
+            isVisible={showBrandedOverlay && !showStartScreen && !isLoading && !iframeVisible}
             programName={brandedOverlayProgramRef.current || currentProgram?.title || ''}
           />
           
@@ -2426,12 +1731,12 @@ export function SyncedVideoPlayer({
               </motion.div>
               
               {/* Program Overlay - Shows every 2-3 minutes */}
-          <ProgramOverlay
-            currentProgram={currentProgram}
-            nextProgram={nextProgram}
-            isVisible={showProgramOverlay}
-            isMobile={isMobile}
-          />
+              {/* <ProgramOverlay
+                currentProgram={currentProgram}
+                nextProgram={nextProgram}
+                isVisible={showProgramOverlay}
+                isMobile={isMobile}
+              /> */}
 
               {/* BOTTOM TICKER - Commented out per requirements */}
               {false && showTicker && (
@@ -2516,156 +1821,18 @@ export function SyncedVideoPlayer({
               )}
             </>
           )}
-        </div>
+        </IframePlayer>
 
         {/* Bottom Controls - OUTSIDE video frame - ALWAYS VISIBLE - Unified with iframe */}
-        {/* {!showStartScreen && !isLoading && !apiError && playerReady && currentProgram && ( */}
-        <div className="w-full">
-                <div className={`bg-black/60 backdrop-blur-xl border-0 rounded-none ${
-                  isMobile ? 'px-3 py-2' : 'px-6 py-4'
-          }`}>{/* top row: logo/actions, no rounding to merge with volume bar */}
-            <div className="flex items-center justify-between gap-2 md:gap-4">
-                    {/* Logo Section - Replaces sound bar */}
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <img 
-                  src="/DeeniTV-V-2.png" 
-                  alt="Deeni.tv"
-                  className={isMobile ? 'h-5' : 'h-7'}
-                />
-              </div>
-
-                    {/* Action Buttons - Order: Schedule, History, Channel, Refresh, Menu */}
-              <div className="flex items-center gap-1 md:gap-2">
-                {[
-                  { icon: Calendar, onClick: () => onOpenSchedule?.(), title: "Programs Schedule" },
-                  { icon: History, onClick: () => setShowPreviousModal(true), title: 'Watched Program' },
-                  { icon: Globe, onClick: () => handleOpenChannelSelector(), title: 'Channel' },
-                  { icon: RefreshCw, onClick: handleReload, title: 'Refresh' },
-                  { icon: MoreHorizontal, onClick: onMenuOpen, title: 'Menu' },
-                ].map((item, index) => (
-                  <motion.div
-                    key={index}
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={item.onClick}
-                      className={`text-white/90 hover:bg-white/20 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 ${
-                        isMobile ? 'h-7 w-7' : 'h-10 w-10'
-                      }`}
-                      title={item.title}
-                    >
-                      <item.icon className={isMobile ? 'h-3.5 w-3.5' : 'h-5 w-5'} />
-                    </Button>
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Sound/Volume Control Bar - Separate row below - Always visible */}
-          <div className={`bg-black/60 backdrop-blur-xl border-0 rounded-b-2xl md:rounded-b-3xl ${
-            isMobile ? 'px-3 py-2' : 'px-6 py-3'
-          }`}>{/* volume bar bottom row with rounded bottom corners */}
-            <div className="flex items-center gap-2">
-              {/* Volume icon + slider */}
-              <div 
-                className="relative flex items-center gap-1 flex-1"
-                onMouseEnter={() => {
-                  if (!isMobile) {
-                    setShowVolumeSlider(true)
-                    resetHideTimer()
-                  }
-                }}
-                onMouseLeave={() => {
-                  if (!isMobile) resetHideTimer()
-                }}
-                onClick={() => {
-                  // allow mobile users to tap anywhere in the row to show slider
-                  if (isMobile && !showVolumeSlider) {
-                    setShowVolumeSlider(true)
-                    resetHideTimer()
-                  }
-                }}
-              >
-                <button
-                  onClick={handleVolumeIconClick}
-                  onMouseEnter={() => {
-                    // ensure immediate show when hovering the icon itself
-                    if (!isMobile) {
-                      setShowVolumeSlider(true)
-                      resetHideTimer()
-                    }
-                  }}
-                  className={`cursor-pointer text-white/70 hover:text-white rounded-full hover:bg-white/10 transition-colors flex items-center justify-center flex-shrink-0 ${
-                    isMobile ? 'h-8 w-8' : 'h-9 w-9'
-                  }`}
-                  aria-label={isMuted ? 'Unmute' : 'Mute'}
-                >
-                  {getVolumeIcon(iconCls)}
-                </button>
-
-                {/* Volume slider - desktop hover & mobile tap */}
-                <AnimatePresence>
-                  {showVolumeSlider && (
-                    <motion.div
-                      initial={{ opacity: 0, width: 0 }}
-                      animate={{ opacity: 1, width: isMobile ? 100 : 200 }}
-                      exit={{ opacity: 0, width: 0 }}
-                      // make animation snappier
-                      transition={{ duration: 0.1 }}
-                      className="overflow-visible px-1"
-                    >
-                      <Slider
-                        value={[isMuted ? 0 : volume]}
-                        min={0}
-                        max={100}
-                        step={1}
-                        onValueChange={handleVolumeChange}
-                        className="w-full"
-                      />
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {/* Volume percentage (always visible on desktop, only when slider shown on mobile) */}
-                {(!isMobile || showVolumeSlider) && (
-                  <span className={`text-white/50 font-mono tabular-nums ${isMobile ? 'text-[11px]' : 'text-xs'}`}>
-                    {isMuted ? 0 : volume}%
-                  </span>
-                )}
-              </div>
-
-
-              {/* Time display on the right - Only show when player is ready */}
-              {playerReady && currentProgram && (
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <div className={`flex items-center gap-1.5 px-2 py-1 bg-white/10 backdrop-blur-sm rounded-lg border border-white/20 ${
-                    isMobile ? 'text-[10px]' : 'text-xs'
-                  }`}>
-                    <Clock className={isMobile ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
-                    <span className="text-white font-medium whitespace-nowrap">
-                      {displayTime} / {fmtTime(videoDuration)}
-                    </span>
-                  </div>
-                  
-                  {/* {timeRemaining && (
-                    <div className={`flex items-center gap-1.5 px-2 py-1 bg-primary/10 backdrop-blur-sm rounded-lg border border-primary/30 ${
-                      isMobile ? 'text-[10px]' : 'text-xs'
-                    }`}>
-                      <Hourglass className={isMobile ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
-                      <span className="text-primary font-medium whitespace-nowrap">
-                        {timeRemaining}
-                      </span>
-                    </div>
-                  )} */}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        <PlayerControls
+          isMobile={isMobile}
+          onOpenSchedule={onOpenSchedule ?? (() => {})}
+          onOpenHistory={() => setShowPreviousModal(true)}
+          onOpenChannelSelector={handleOpenChannelSelector}
+          onReload={handleReload}
+          onMenuOpen={onMenuOpen}
+        />
+        {/* Program Info Section - REMOVED to match web style (no extra content below iframe) */}
       </div>
 
       {/* Channel Selector Modal */}
