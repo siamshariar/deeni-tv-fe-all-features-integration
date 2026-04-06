@@ -772,8 +772,10 @@ export function SyncedVideoPlayer({
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const hideVolumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const autoUnmuteTimerRef = useRef<NodeJS.Timeout | null>(null)
-  const playerStartupFallbackRef = useRef<NodeJS.Timeout | null>(null)
   const hasAutoUnmutedRef = useRef(false)
+  const startupWatchdogRef = useRef<NodeJS.Timeout | null>(null)
+  const startupRecoveryRef = useRef<NodeJS.Timeout | null>(null)
+  const hasPlaybackStartedRef = useRef(false)
 
   // Reset the auto-hide timer (both platforms)
   const resetHideTimer = useCallback(() => {
@@ -1221,17 +1223,21 @@ export function SyncedVideoPlayer({
     
     setIsLoading(true)
     setApiError(null)
+    setShowStartScreen(false)
     setIsMuted(true)
     setYouTubeMuted(true)
     setShowAutoUnmuteNotification(false)
     hasAutoUnmutedRef.current = false
+    hasPlaybackStartedRef.current = false
 
     if (autoUnmuteTimerRef.current) {
       clearTimeout(autoUnmuteTimerRef.current)
     }
-    if (playerStartupFallbackRef.current) {
-      clearTimeout(playerStartupFallbackRef.current)
-      playerStartupFallbackRef.current = null
+    if (startupWatchdogRef.current) {
+      clearTimeout(startupWatchdogRef.current)
+    }
+    if (startupRecoveryRef.current) {
+      clearTimeout(startupRecoveryRef.current)
     }
 
     setCurrentChannelId(channelId)
@@ -1398,30 +1404,25 @@ export function SyncedVideoPlayer({
           // Keep muted initially - auto-unmute timer will handle unmuting
           setYouTubeMuted(true)
 
-          // Recovery: sometimes PLAYING state is missed after reload/deploy.
-          // If that happens, force one playback retry and reveal iframe.
-          if (playerStartupFallbackRef.current) {
-            clearTimeout(playerStartupFallbackRef.current)
-          }
-          playerStartupFallbackRef.current = setTimeout(() => {
-            if (!mountedRef.current) return
-            console.warn('⚠️ Startup fallback triggered: forcing playback retry')
-            setIsLoading(false)
-            setShowStartScreen(false)
-            setIframeVisible(true)
+          // Watchdog: sometimes after reload YT gets stuck and never emits PLAYING.
+          // Try one recovery load before surfacing an error.
+          startupWatchdogRef.current = setTimeout(() => {
+            if (!mountedRef.current || hasPlaybackStartedRef.current) return
 
+            console.warn('⚠️ Startup stuck after reload, forcing one recovery load...')
             const recovered = loadVideo(program.videoId, Math.floor(startTime))
             if (recovered) {
               play()
             }
 
-            // Keep UI usable even if state events are delayed.
-            setTimeout(() => {
-              if (mountedRef.current) {
-                setShowBrandedOverlay(false)
-              }
-            }, 1000)
-          }, 9000)
+            startupRecoveryRef.current = setTimeout(() => {
+              if (!mountedRef.current || hasPlaybackStartedRef.current) return
+              console.error('❌ Player still not PLAYING after recovery')
+              setShowBrandedOverlay(false)
+              setApiError('Playback is stuck. Please tap Refresh.')
+              setIsLoading(false)
+            }, 4000)
+          }, 12000)
         },
         onStateChange: (state) => {
           if (!mountedRef.current) return
@@ -1439,9 +1440,14 @@ export function SyncedVideoPlayer({
             playNextVideoRef.current()
           } else if (state === YT_STATE.PLAYING) {
             console.log('▶️ Video is now playing')
-            if (playerStartupFallbackRef.current) {
-              clearTimeout(playerStartupFallbackRef.current)
-              playerStartupFallbackRef.current = null
+            hasPlaybackStartedRef.current = true
+            if (startupWatchdogRef.current) {
+              clearTimeout(startupWatchdogRef.current)
+              startupWatchdogRef.current = null
+            }
+            if (startupRecoveryRef.current) {
+              clearTimeout(startupRecoveryRef.current)
+              startupRecoveryRef.current = null
             }
             setIsLoading(false);
             setIframeVisible(true)
@@ -1465,11 +1471,15 @@ export function SyncedVideoPlayer({
           }
         },
         onError: (code, msg) => {
-          if (playerStartupFallbackRef.current) {
-            clearTimeout(playerStartupFallbackRef.current)
-            playerStartupFallbackRef.current = null
-          }
           console.error('Player error:', code, msg)
+          if (startupWatchdogRef.current) {
+            clearTimeout(startupWatchdogRef.current)
+            startupWatchdogRef.current = null
+          }
+          if (startupRecoveryRef.current) {
+            clearTimeout(startupRecoveryRef.current)
+            startupRecoveryRef.current = null
+          }
           if (code === 2 || code === 5 || code === 100) {
             setApiError(`Playback error: ${msg}`)
             setIsLoading(false)
@@ -1481,10 +1491,6 @@ export function SyncedVideoPlayer({
       })
       
     } catch (error) {
-      if (playerStartupFallbackRef.current) {
-        clearTimeout(playerStartupFallbackRef.current)
-        playerStartupFallbackRef.current = null
-      }
       console.error('API call failed:', error)
       setApiError(error instanceof Error ? error.message : 'Failed to load video')
       setIsLoading(false)
@@ -1933,8 +1939,11 @@ export function SyncedVideoPlayer({
       if (autoUnmuteTimerRef.current) {
         clearTimeout(autoUnmuteTimerRef.current)
       }
-      if (playerStartupFallbackRef.current) {
-        clearTimeout(playerStartupFallbackRef.current)
+      if (startupWatchdogRef.current) {
+        clearTimeout(startupWatchdogRef.current)
+      }
+      if (startupRecoveryRef.current) {
+        clearTimeout(startupRecoveryRef.current)
       }
     }
   }, [])
