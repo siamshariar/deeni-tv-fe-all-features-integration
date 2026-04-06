@@ -907,7 +907,7 @@ export function SyncedVideoPlayer({
         setShowAutoUnmuteNotification(false)
         console.log('🔊 Auto-unmuting initial playback')
       }
-    }, 5700)
+    }, 5760)
     
     return () => {
       if (autoUnmuteTimerRef.current) {
