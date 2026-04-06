@@ -842,6 +842,13 @@ export function SyncedVideoPlayer({
     if (stored.length > 0) setApiChannels(stored)
   }, [])
 
+  // iOS: prime muted player while start screen is visible so first tap can unlock audio.
+  useEffect(() => {
+    if (!isIOS || !showStartScreen) return
+    if (isPrimedRef.current) return
+    primePlayer()
+  }, [isIOS, showStartScreen, primePlayer, isPrimedRef])
+
   // Load previous videos when channel changes
   useEffect(() => {
     if (currentChannelId) {
@@ -1498,6 +1505,21 @@ export function SyncedVideoPlayer({
   }, [isLoading, playerReady, volume, initializePlayer, loadVideo, seekTo, play, setYouTubeVolume, setYouTubeMuted, onChannelChange, onStartClick, getDuration, fetchFromBrowserAPI, notifyParentScheduleChange])
 
   const handleFirstTimeStart = useCallback(async () => {
+    // iOS unlock must happen synchronously in user gesture before any await.
+    if (isIOS && isPrimedRef.current) {
+      unmuteAndResume(volume)
+    }
+
+    // Never keep the default/start screen visible while async calls are running.
+    setShowStartScreen(false)
+
+    // If a channel is already selected, start playback immediately.
+    if (currentChannelId) {
+      loadChannel(currentChannelId)
+    } else {
+      setShowChannelSelector(true)
+    }
+
     // Fetch channel list from live API and store in localStorage (only if not cached)
     let channels = getStoredApiChannels()
     if (channels.length === 0) {
@@ -1526,17 +1548,7 @@ export function SyncedVideoPlayer({
     if (channels.length > 0) {
       setApiChannels(channels)
     }
-
-    // Start the player
-    if (!currentChannelId) {
-      setShowChannelSelector(true)
-    } else {
-      // Immediately hide the start screen and show the loading overlay
-      setShowStartScreen(false)
-      setIsLoading(true)
-      loadChannel(currentChannelId)
-    }
-  }, [currentChannelId, loadChannel])
+  }, [currentChannelId, loadChannel, isIOS, isPrimedRef, unmuteAndResume, volume])
 
   const handleSelectChannel = useCallback((channelId: string) => {
     setShowChannelSelector(false)
