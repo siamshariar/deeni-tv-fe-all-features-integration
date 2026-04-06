@@ -775,6 +775,8 @@ export function SyncedVideoPlayer({
   const hasAutoUnmutedRef = useRef(false)
   const startupWatchdogRef = useRef<NodeJS.Timeout | null>(null)
   const startupRecoveryRef = useRef<NodeJS.Timeout | null>(null)
+  const startupHardTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const loadInFlightRef = useRef(false)
   const hasPlaybackStartedRef = useRef(false)
 
   // Reset the auto-hide timer (both platforms)
@@ -1226,9 +1228,11 @@ export function SyncedVideoPlayer({
   useEffect(() => { syncImmediateAfterTransitionRef.current = syncImmediateAfterTransition }, [syncImmediateAfterTransition])
 
   const loadChannel = useCallback(async (channelId: string) => {
-    if (isLoading) return
+    if (isLoading || loadInFlightRef.current) return
+    loadInFlightRef.current = true
     
     setIsLoading(true)
+    setPlayerReady(false)
     setApiError(null)
     setShowStartScreen(false)
     setIsMuted(true)
@@ -1246,6 +1250,19 @@ export function SyncedVideoPlayer({
     if (startupRecoveryRef.current) {
       clearTimeout(startupRecoveryRef.current)
     }
+    if (startupHardTimeoutRef.current) {
+      clearTimeout(startupHardTimeoutRef.current)
+    }
+
+    // Hard fail-safe: never allow startup to hang indefinitely.
+    startupHardTimeoutRef.current = setTimeout(() => {
+      if (!mountedRef.current || hasPlaybackStartedRef.current) return
+      console.error('❌ Startup hard-timeout reached; aborting stuck startup state')
+      setShowBrandedOverlay(false)
+      setIsLoading(false)
+      setApiError('Startup timed out. Please tap Refresh.')
+      loadInFlightRef.current = false
+    }, 25000)
 
     setCurrentChannelId(channelId)
     onChannelChange?.(channelId)
@@ -1384,6 +1401,9 @@ export function SyncedVideoPlayer({
       }
       
       lastVideoIdRef.current = program.videoId
+
+      // Ensure we never keep multiple orphaned YouTube player instances.
+      destroy()
       
       // Initialize player - always start muted
       await initializePlayer({
@@ -1397,6 +1417,11 @@ export function SyncedVideoPlayer({
           setIsLoading(false)
           setShowStartScreen(false)
           onStartClick?.()
+
+          if (startupHardTimeoutRef.current) {
+            clearTimeout(startupHardTimeoutRef.current)
+            startupHardTimeoutRef.current = null
+          }
           
           seekTo(startTime, true)
           play()
@@ -1448,6 +1473,7 @@ export function SyncedVideoPlayer({
           } else if (state === YT_STATE.PLAYING) {
             console.log('▶️ Video is now playing')
             hasPlaybackStartedRef.current = true
+            loadInFlightRef.current = false
             if (startupWatchdogRef.current) {
               clearTimeout(startupWatchdogRef.current)
               startupWatchdogRef.current = null
@@ -1455,6 +1481,10 @@ export function SyncedVideoPlayer({
             if (startupRecoveryRef.current) {
               clearTimeout(startupRecoveryRef.current)
               startupRecoveryRef.current = null
+            }
+            if (startupHardTimeoutRef.current) {
+              clearTimeout(startupHardTimeoutRef.current)
+              startupHardTimeoutRef.current = null
             }
             setIsLoading(false);
             setIframeVisible(true)
@@ -1479,6 +1509,7 @@ export function SyncedVideoPlayer({
         },
         onError: (code, msg) => {
           console.error('Player error:', code, msg)
+          loadInFlightRef.current = false
           if (startupWatchdogRef.current) {
             clearTimeout(startupWatchdogRef.current)
             startupWatchdogRef.current = null
@@ -1486,6 +1517,10 @@ export function SyncedVideoPlayer({
           if (startupRecoveryRef.current) {
             clearTimeout(startupRecoveryRef.current)
             startupRecoveryRef.current = null
+          }
+          if (startupHardTimeoutRef.current) {
+            clearTimeout(startupHardTimeoutRef.current)
+            startupHardTimeoutRef.current = null
           }
           if (code === 2 || code === 5 || code === 100) {
             setApiError(`Playback error: ${msg}`)
@@ -1501,8 +1536,13 @@ export function SyncedVideoPlayer({
       console.error('API call failed:', error)
       setApiError(error instanceof Error ? error.message : 'Failed to load video')
       setIsLoading(false)
+      loadInFlightRef.current = false
+      if (startupHardTimeoutRef.current) {
+        clearTimeout(startupHardTimeoutRef.current)
+        startupHardTimeoutRef.current = null
+      }
     }
-  }, [isLoading, playerReady, volume, initializePlayer, loadVideo, seekTo, play, setYouTubeVolume, setYouTubeMuted, onChannelChange, onStartClick, getDuration, fetchFromBrowserAPI, notifyParentScheduleChange])
+  }, [isLoading, playerReady, volume, initializePlayer, loadVideo, seekTo, play, setYouTubeVolume, setYouTubeMuted, onChannelChange, onStartClick, getDuration, fetchFromBrowserAPI, notifyParentScheduleChange, destroy])
 
   const handleFirstTimeStart = useCallback(async () => {
     // iOS unlock must happen synchronously in user gesture before any await.
@@ -1769,6 +1809,12 @@ export function SyncedVideoPlayer({
     setYouTubeMuted(true)
     setShowAutoUnmuteNotification(false)
     hasAutoUnmutedRef.current = false
+    loadInFlightRef.current = false
+
+    if (startupHardTimeoutRef.current) {
+      clearTimeout(startupHardTimeoutRef.current)
+      startupHardTimeoutRef.current = null
+    }
     
     // Reload same channel — previousVideos state and localStorage are preserved
     setTimeout(() => {
@@ -1957,6 +2003,10 @@ export function SyncedVideoPlayer({
       if (startupRecoveryRef.current) {
         clearTimeout(startupRecoveryRef.current)
       }
+      if (startupHardTimeoutRef.current) {
+        clearTimeout(startupHardTimeoutRef.current)
+      }
+      loadInFlightRef.current = false
     }
   }, [])
 
