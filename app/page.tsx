@@ -1,7 +1,6 @@
 'use client'
 
-import { BootSplash } from '@/components/boot-splash'
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { SyncedVideoPlayer } from '@/components/synced-video-player'
 import { MenuDrawer, MenuOption } from '@/components/menu-drawer'
 import { DonateButton } from '@/components/donate-button'
@@ -11,8 +10,6 @@ import { ChannelSelector } from '@/components/channel-selector'
 import { VideoProgram } from '@/types/schedule'
 import { getSavedChannel, saveChannel, ApiChannel, getStoredApiChannels, saveApiChannels } from '@/lib/schedule-utils'
 import { clientFetchWithAuth } from '@/lib/client-fetch'
-
-const BOOT_SPLASH_MIN_DURATION_MS = 1600
 
 export default function Home() {
   const isIOS = useMemo(() => {
@@ -37,8 +34,6 @@ export default function Home() {
   const [openHistoryModal, setOpenHistoryModal] = useState(false)
   const [openChannelSelectorModal, setOpenChannelSelectorModal] = useState(false)
   const [reloadCounter, setReloadCounter] = useState(0)
-  const [showBootSplash, setShowBootSplash] = useState(true)
-  const splashStartRef = useRef(Date.now())
 
   // Check localStorage for saved channel on initial load
   useEffect(() => {
@@ -60,20 +55,6 @@ export default function Home() {
     }
     setIsLoading(false)
   }, [isIOS])
-
-  useEffect(() => {
-    if (isLoading) {
-      return
-    }
-
-    const elapsed = Date.now() - splashStartRef.current
-    const remaining = Math.max(0, BOOT_SPLASH_MIN_DURATION_MS - elapsed)
-    const timer = window.setTimeout(() => {
-      setShowBootSplash(false)
-    }, remaining)
-
-    return () => window.clearTimeout(timer)
-  }, [isLoading])
 
   // Fetch channel list for the ChannelSelector when it opens (first-time users)
   useEffect(() => {
@@ -159,11 +140,8 @@ export default function Home() {
     setIsChannelSelectorOpen(false)
   }
 
-  // Keep the branded boot splash visible long enough to avoid a white flash.
-  if (isLoading || showBootSplash) {
-    return (
-      <BootSplash />
-    )
+  if (isLoading) {
+    return <main className="relative min-h-screen bg-zinc-950" />
   }
 
   return (

@@ -468,6 +468,19 @@ export function useYouTubePlayer() {
     return 0
   }, [])
 
+  const getCurrentVideoId = useCallback((): string => {
+    if (!playerRef.current) return ''
+    try {
+      if (typeof playerRef.current.getVideoData === 'function') {
+        const data = playerRef.current.getVideoData()
+        if (data && typeof data.video_id === 'string') {
+          return data.video_id
+        }
+      }
+    } catch (err) {}
+    return ''
+  }, [])
+
   const getIsMuted = useCallback((): boolean => {
     if (!playerRef.current) return isMutedRef.current
     try {
@@ -506,6 +519,7 @@ export function useYouTubePlayer() {
     play,
     seekTo,
     getCurrentTime,
+    getCurrentVideoId,
     getIsMuted,
     destroy
   }

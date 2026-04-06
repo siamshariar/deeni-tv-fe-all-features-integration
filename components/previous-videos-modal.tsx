@@ -319,6 +319,7 @@ const VideoPlayerModal = ({
           showinfo: 0,
           iv_load_policy: 3,
           disablekb: 1,
+          fs: 0,
           enablejsapi: 1,
           origin: window.location.origin,
           playsinline: 1,
@@ -516,6 +517,7 @@ const VideoPlayerModal = ({
               {/* Video container — YT Player API injects iframe here */}
               <div className="relative w-full aspect-video bg-black overflow-hidden border-x border-white/10 select-none">
                 <div ref={containerRef} className="absolute inset-0 w-full h-full" />
+                <div className="absolute inset-0 w-full h-full pointer-events-auto z-10" />
 
                 {/* Branded loading overlay — shown until player is ready */}
                 <BrandedLoadingOverlay isVisible={!playerLoaded} programName={video.title} />
