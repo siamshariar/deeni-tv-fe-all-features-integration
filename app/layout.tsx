@@ -170,11 +170,11 @@ export default function RootLayout({
         <meta name="google" content="notranslate" />
 
         {/* ── Safari pinned-tab icon ── */}
-        <link rel="mask-icon" href="/DeeniTV.svg" color="#16a34a" />
+        <link rel="mask-icon" href="/DeeniTV.svg" color="#ffffff" />
 
         {/* ── MS Application tile ── */}
         <meta name="msapplication-TileImage" content="/favicon-256x256.png" />
-        <meta name="msapplication-TileColor" content="#16a34a" />
+        <meta name="msapplication-TileColor" content="#000000" />
 
         {/* ── PWA Compatibility shim (adds missing iOS meta from manifest) ── */}
         <script
