@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
 import { BootSplash } from '@/components/boot-splash'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { SyncedVideoPlayer } from '@/components/synced-video-player'
 import { MenuDrawer, MenuOption } from '@/components/menu-drawer'
 import { DonateButton } from '@/components/donate-button'

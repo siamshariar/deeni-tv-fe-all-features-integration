@@ -1609,15 +1609,7 @@ export function SyncedVideoPlayer({
           />
           <div className="absolute inset-0 w-full h-full pointer-events-auto" />
           
-          <div
-            ref={youtubeContainerRef}
-            className="absolute inset-0 w-full h-full"
-            style={{ opacity: iframeVisible ? 1 : 0 }}
-          />
-          <div className="absolute inset-0 w-full h-full pointer-events-auto" />
-          
           {/* Branded Loading Overlay - Shows during YouTube loading, hides on PLAYING event */}
->>>>>>> origin/fix/youtube-wrapper-ios-safe
           <BrandedLoadingOverlay
             isVisible={showBrandedOverlay && !showStartScreen && !isLoading && !iframeVisible}
             programName={brandedOverlayProgramRef.current || currentProgram?.title || ''}
@@ -1842,7 +1834,7 @@ export function SyncedVideoPlayer({
               )}
             </>
           )}
-        </IframePlayer>
+        </div>
 
         {/* Bottom Controls - OUTSIDE video frame - ALWAYS VISIBLE - Unified with iframe */}
         <PlayerControls
