@@ -94,14 +94,9 @@ export function SyncedVideoPlayer({
   // UI State
   const [showControls, setShowControls] = useState(true)
   const [controlsVisible, setControlsVisible] = useState(true)
-  // On iOS start muted (autoplay restriction); on other platforms start unmuted
-  const [isMuted, setIsMuted] = useState(() => {
-    if (typeof navigator === 'undefined') return false
-    return (
-      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-    )
-  })
+  // Start all sessions muted while the app shows the start screen.
+  // The first user-triggered playback transition will unmute the real stream.
+  const [isMuted, setIsMuted] = useState(true)
   const [volume, setVolume] = useState(75)
   const [showVolumeSlider, setShowVolumeSlider] = useState(false)
   const [showTicker, setShowTicker] = useState(true)
@@ -149,6 +144,9 @@ export function SyncedVideoPlayer({
   const [playerReady, setPlayerReady] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
   const [serverTimeOffset, setServerTimeOffset] = useState(0)
+  const [hasStartClicked, setHasStartClicked] = useState(false)
+  const hasStartClickedRef = useRef(false)
+  const autoUnmuteAfterStartRef = useRef(false)
   
   // Refs
   const playerRef = useRef<HTMLDivElement>(null)
@@ -254,6 +252,14 @@ export function SyncedVideoPlayer({
   useEffect(() => {
     setShowStartScreen(showStartModal)
   }, [showStartModal])
+
+  // Whenever start screen is visible, keep audio muted and volume at 0.
+  useEffect(() => {
+    if (!showStartScreen) return
+    setIsMuted(true)
+    setYouTubeMuted(true)
+    setYouTubeVolume(0)
+  }, [showStartScreen, setYouTubeMuted, setYouTubeVolume])
 
   // Handle external openHistoryModal prop
   useEffect(() => {
@@ -903,9 +909,9 @@ export function SyncedVideoPlayer({
         const loaded = loadVideo(program.videoId, Math.floor(startTime))
         if (loaded) {
           console.log('✅ 🍎 Video swapped on primed player')
-          setYouTubeVolume(volume)
-          // Don't call setYouTubeMuted(false) — unmuteAndResume already did it
-          // synchronously in the gesture. Calling it again is harmless but redundant.
+          // Keep it muted until real playback has started (first PLAYING event)
+          setYouTubeVolume(0)
+          setYouTubeMuted(true)
         } else {
           console.error('❌ 🍎 loadVideo failed on primed player')
           setIsLoading(false)
@@ -932,12 +938,12 @@ export function SyncedVideoPlayer({
               setVideoDuration(duration)
             }
             
-            setYouTubeVolume(volume)
-            // On iOS keep muted until user taps the unmute button (user gesture required)
-            if (!isIOS) {
-              setIsMuted(false)
-              setYouTubeMuted(false)
-            }
+            setYouTubeVolume(0)
+            // Keep player muted until the first PLAYING event auto-unmutes
+            // once the real content is ready. The channel live stream should
+            // not produce sound before this user action/transition completes.
+            setIsMuted(true)
+            setYouTubeMuted(true)
           },
           onStateChange: (state) => {
             if (!mountedRef.current) return
@@ -959,6 +965,14 @@ export function SyncedVideoPlayer({
               console.log('▶️ 22 Video is now playing')
               setIsLoading(false);
               setIframeVisible(true)
+
+              if (autoUnmuteAfterStartRef.current && hasStartClickedRef.current) {
+                setIsMuted(false)
+                setYouTubeMuted(false)
+                setYouTubeVolume(volume)
+                autoUnmuteAfterStartRef.current = false
+              }
+
               setTimeout(() => {
                 setShowBrandedOverlay(false) // Hide branded overlay when playback starts
               }, 4000);
@@ -1002,14 +1016,23 @@ export function SyncedVideoPlayer({
   }, [isLoading, playerReady, isPrimedRef, volume, initializePlayer, loadVideo, seekTo, play, setYouTubeVolume, setYouTubeMuted, onChannelChange, onStartClick, getDuration, fetchFromBrowserAPI, notifyParentScheduleChange])
 
   const handleFirstTimeStart = useCallback(async () => {
+    setHasStartClicked(true)
+    hasStartClickedRef.current = true
+    autoUnmuteAfterStartRef.current = true
+
+    // Ensure the primer is muted while we are still in the user-gesture phase
+    // and before the real video stream is fully loaded.
+    setIsMuted(true)
+    setYouTubeMuted(true)
+    setYouTubeVolume(0)
+
     // ── Step 0 (synchronous — MUST be first, before any await) ──────────────
     // On iOS the user gesture window closes as soon as the call stack goes async.
-    // Calling unmuteAndResume() HERE, before any fetch/await, tells the browser
-    // "the user intentionally enabled audio" and unlocks sound for this player
-    // instance.  loadVideoById() later will reuse the same unlocked player, so
-    // the real video starts with audio automatically.
+    // We need to unlock audio permission in this gesture, but we DO NOT want
+    // the primer video sound to play for the 1-2s while we fetch schedule data.
+    // So unlock at volume=0 and then set full volume once the real stream is loaded.
     if (isPrimedRef.current) {
-      unmuteAndResume(volume)
+      unmuteAndResume(0)
     }
 
     // 1. Fetch channel list from live API and store in localStorage (only if not cached)
@@ -1065,26 +1088,9 @@ export function SyncedVideoPlayer({
 
     // Then, try to refresh channels from API
     try {
-      let res = null
-
-      try {
-        res = await clientFetchWithAuth('https://api.deeniinfotech.com/api/tv-channels')
-      } catch (err) {
-        console.warn('clientFetchWithAuth failed for tv-channels, trying plain fetch fallback', err)
-      }
-
-      if (!res) {
-        const fallbackRes = await fetch('/api/tv-channels')
-        if (fallbackRes.ok) {
-          res = await fallbackRes.json()
-        } else {
-          throw new Error(`Fallback /api/tv-channels failed ${fallbackRes.status}`)
-        }
-      }
-
-      const data = res?.data || res
-      if (data?.length) {
-        const freshChannels = data
+      const res = await clientFetchWithAuth('https://api.deeniinfotech.com/api/tv-channels')
+      if (res?.data?.length) {
+        const freshChannels = res.data
         const storedChannels = getStoredApiChannels()
 
         // Check if there are differences

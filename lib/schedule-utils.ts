@@ -536,6 +536,29 @@ export function formatTime(seconds: number): string {
 }
 
 /**
+ * Calculate an adjusted live seek time for resuming after app backgrounding.
+ *
+ * @param serverSeekTo  seconds into the current program reported by API
+ * @param programDuration  duration of the current program in seconds
+ * @param backgroundMs  milliseconds elapsed while app was hidden
+ * @param networkMs  milliseconds it took to fetch the API response
+ * @param clamp  when true, caps at programDuration; when false, allows overflow
+ */
+export function getAdjustedLiveSeekTime(
+  serverSeekTo: number,
+  programDuration: number,
+  backgroundMs: number = 0,
+  networkMs: number = 0,
+  clamp: boolean = true,
+): number {
+  const offsetSeconds = (backgroundMs + networkMs) / 1000
+  const adjusted = serverSeekTo + offsetSeconds
+  if (adjusted < 0) return 0
+  if (clamp && adjusted > programDuration) return programDuration
+  return adjusted
+}
+
+/**
  * Format duration in seconds to human readable format
  */
 export function formatDuration(seconds: number): string {
