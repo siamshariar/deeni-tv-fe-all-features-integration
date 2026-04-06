@@ -140,7 +140,7 @@ export function SyncedVideoPlayer({
   
   // App State
   const [isLoading, setIsLoading] = useState(false)
-  const [showStartScreen, setShowStartScreen] = useState(showStartModal)
+  const [showStartScreen, setShowStartScreen] = useState(() => (isIOS ? showStartModal : false))
   const [playerReady, setPlayerReady] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
   const [serverTimeOffset, setServerTimeOffset] = useState(0)
@@ -173,7 +173,7 @@ export function SyncedVideoPlayer({
   const isStreamLoadingRef = useRef(false)
   // Track whether the app is currently in the background (visibility API)
   const appInBackgroundRef = useRef(false)
-  
+  const hasAutoStartedRef = useRef(false)
   // "Latest value" refs — used inside syncWithServer so we don't need those values
   // in the useCallback dependency array (which would reset the 5-min interval on each video change)
   const currentProgramRef = useRef<VideoProgram | null>(null)
@@ -250,8 +250,8 @@ export function SyncedVideoPlayer({
 
   // Update showStartScreen when prop changes
   useEffect(() => {
-    setShowStartScreen(showStartModal)
-  }, [showStartModal])
+    setShowStartScreen(isIOS ? showStartModal : false)
+  }, [showStartModal, isIOS])
 
   // Whenever start screen is visible, keep audio muted and volume at 0.
   useEffect(() => {
@@ -909,9 +909,9 @@ export function SyncedVideoPlayer({
         const loaded = loadVideo(program.videoId, Math.floor(startTime))
         if (loaded) {
           console.log('✅ 🍎 Video swapped on primed player')
-          // Keep it muted until real playback has started (first PLAYING event)
-          setYouTubeVolume(0)
-          setYouTubeMuted(true)
+          setYouTubeVolume(volume)
+          setYouTubeMuted(false)
+          setIsMuted(false)
         } else {
           console.error('❌ 🍎 loadVideo failed on primed player')
           setIsLoading(false)
@@ -938,12 +938,9 @@ export function SyncedVideoPlayer({
               setVideoDuration(duration)
             }
             
-            setYouTubeVolume(0)
-            // Keep player muted until the first PLAYING event auto-unmutes
-            // once the real content is ready. The channel live stream should
-            // not produce sound before this user action/transition completes.
-            setIsMuted(true)
-            setYouTubeMuted(true)
+            setYouTubeVolume(volume)
+            setIsMuted(false)
+            setYouTubeMuted(false)
           },
           onStateChange: (state) => {
             if (!mountedRef.current) return
@@ -965,14 +962,7 @@ export function SyncedVideoPlayer({
               console.log('▶️ 22 Video is now playing')
               setIsLoading(false);
               setIframeVisible(true)
-
-              if (autoUnmuteAfterStartRef.current && hasStartClickedRef.current) {
-                setIsMuted(false)
-                setYouTubeMuted(false)
-                setYouTubeVolume(volume)
-                autoUnmuteAfterStartRef.current = false
-              }
-
+              setIsMuted(false)
               setTimeout(() => {
                 setShowBrandedOverlay(false) // Hide branded overlay when playback starts
               }, 4000);
@@ -1015,6 +1005,17 @@ export function SyncedVideoPlayer({
     }
   }, [isLoading, playerReady, isPrimedRef, volume, initializePlayer, loadVideo, seekTo, play, setYouTubeVolume, setYouTubeMuted, onChannelChange, onStartClick, getDuration, fetchFromBrowserAPI, notifyParentScheduleChange])
 
+  // Auto-load on web/android: iOS keeps explicit Start button.
+  useEffect(() => {
+    if (isIOS) return
+    if (!currentChannelId) return
+    if (hasAutoStartedRef.current) return
+    if (playerReady || isLoading || showStartScreen || apiError || currentProgram) return
+
+    hasAutoStartedRef.current = true
+    loadChannel(currentChannelId)
+  }, [isIOS, currentChannelId, playerReady, isLoading, showStartScreen, apiError, currentProgram, loadChannel])
+
   const handleFirstTimeStart = useCallback(async () => {
     setHasStartClicked(true)
     hasStartClickedRef.current = true
@@ -1034,6 +1035,8 @@ export function SyncedVideoPlayer({
     if (isPrimedRef.current) {
       unmuteAndResume(0)
     }
+    setIsMuted(false)
+    setYouTubeMuted(false)
 
     // 1. Fetch channel list from live API and store in localStorage (only if not cached)
     let channels = getStoredApiChannels()
@@ -1090,12 +1093,12 @@ export function SyncedVideoPlayer({
     try {
       const res = await clientFetchWithAuth('https://api.deeniinfotech.com/api/tv-channels')
       if (res?.data?.length) {
-        const freshChannels = res.data
+        const freshChannels: ApiChannel[] = res.data
         const storedChannels = getStoredApiChannels()
 
         // Check if there are differences
         const hasChanges = freshChannels.length !== storedChannels.length ||
-          freshChannels.some((fresh: any, index: number) => {
+          freshChannels.some((fresh: ApiChannel, index: number) => {
             const stored = storedChannels[index]
             return !stored || fresh.id !== stored.id || fresh.title !== stored.title
           })
@@ -1591,12 +1594,47 @@ export function SyncedVideoPlayer({
         isTablet ? 'w-[90vw]' :
         'w-full'
       }`}>
-                <IframePlayer containerRef={youtubeContainerRef} iframeVisible={iframeVisible}>
-          {/* YouTube iframe container is rendered by IframePlayer.
-              IframePlayer manages opacity (iframeVisible) and pointer-events.
-              Child overlays are layered on top. */}
-
-          {/* Branded Loading Overlay - Shows while the iframe is still loading and hides when the video starts playing */}
+<<<<<<< HEAD
+        <div 
+          ref={playerRef}
+          className="relative w-full aspect-video bg-black/50 backdrop-blur-sm overflow-hidden shadow-2xl border border-white/10 border-b-0 transition-all duration-300 rounded-t-2xl md:rounded-t-3xl rounded-b-none"
+          // className={`relative w-full aspect-video bg-black/50 backdrop-blur-sm overflow-hidden shadow-2xl border border-white/10 border-b-0 transition-all duration-300 ${
+          //   isFullscreen ? 'rounded-none border-0' : 'rounded-t-2xl md:rounded-t-3xl rounded-b-none'
+          // }`}
+        >
+          {/* YouTube iframe container — stays opacity:0 until the real video fires
+              its first PLAYING event (iframeVisible).  This hides the primer video
+              AND the brief blank iframe during player init.  Subsequent video
+              transitions are covered by BrandedLoadingOverlay instead. */}
+          <div
+            ref={youtubeContainerRef}
+            className="absolute inset-0 w-full h-full"
+            style={{ opacity: iframeVisible ? 1 : 0 }}
+          />
+          <div className="absolute inset-0 w-full h-full pointer-events-auto" />
+          
+          {/* Branded Loading Overlay - Shows during YouTube loading, hides on PLAYING event */}
+=======
+        <div 
+          ref={playerRef}
+          className="relative w-full aspect-video bg-black/50 backdrop-blur-sm overflow-hidden shadow-2xl border border-white/10 border-b-0 transition-all duration-300 rounded-t-2xl md:rounded-t-3xl rounded-b-none"
+          // className={`relative w-full aspect-video bg-black/50 backdrop-blur-sm overflow-hidden shadow-2xl border border-white/10 border-b-0 transition-all duration-300 ${
+          //   isFullscreen ? 'rounded-none border-0' : 'rounded-t-2xl md:rounded-t-3xl rounded-b-none'
+          // }`}
+        >
+          {/* YouTube iframe container — stays opacity:0 until the real video fires
+              its first PLAYING event (iframeVisible).  This hides the primer video
+              AND the brief blank iframe during player init.  Subsequent video
+              transitions are covered by BrandedLoadingOverlay instead. */}
+          <div
+            ref={youtubeContainerRef}
+            className="absolute inset-0 w-full h-full"
+            style={{ opacity: iframeVisible ? 1 : 0 }}
+          />
+          <div className="absolute inset-0 w-full h-full pointer-events-auto" />
+          
+          {/* Branded Loading Overlay - Shows during YouTube loading, hides on PLAYING event */}
+>>>>>>> origin/fix/youtube-wrapper-ios-safe
           <BrandedLoadingOverlay
             isVisible={showBrandedOverlay && !showStartScreen && !isLoading && !iframeVisible}
             programName={brandedOverlayProgramRef.current || currentProgram?.title || ''}
@@ -1610,13 +1648,7 @@ export function SyncedVideoPlayer({
             // TODO: Load iframe muted with default video
           )}
 
-          {/* Tap-to-Unmute Screen */}
-          {/* Full-screen overlay (like StartScreen) — shown whenever player is ready */}
-          {/* but audio is muted. Condition: isMuted && playerReady (works on both    */}
-          {/* iOS and non-iOS; on iOS this appears right after the player starts).    */}
-          {/* {isMuted && playerReady && (
-            <TapToUnmuteScreen onUnmuteClick={toggleMute} />
-          )} */}
+          {/* Single-start UX: no second unmute gate overlay. */}
           
           {/* Loading overlay */}
           {isLoading && (
