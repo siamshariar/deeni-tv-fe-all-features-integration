@@ -1860,12 +1860,32 @@ export function SyncedVideoPlayer({
     setYouTubeMuted(true)
     setShowAutoUnmuteNotification(false)
     hasAutoUnmutedRef.current = false
+
+    if (isIOS) {
+      // iOS requirement: reload should behave like fresh page load and require
+      // an explicit unmute/start gesture from the start screen.
+      setShowStartScreen(true)
+      setIsLoading(false)
+      setShowBrandedOverlay(false)
+      iosAudioUnlockedRef.current = false
+      iosUnmuteRetryRef.current = false
+      startInProgressRef.current = false
+
+      destroy()
+      setIosPrimerReady(false)
+      primePlayer().finally(() => {
+        if (mountedRef.current && isPrimedRef.current) {
+          setIosPrimerReady(true)
+        }
+      })
+      return
+    }
     
     // Reload same channel — previousVideos state and localStorage are preserved
     setTimeout(() => {
       loadChannel(currentChannelId)
     }, 200)
-  }, [currentChannelId, currentProgram, loadChannel, setYouTubeMuted])
+  }, [currentChannelId, currentProgram, destroy, isIOS, isPrimedRef, loadChannel, primePlayer, setYouTubeMuted])
 
   // Auto-start on web/android. iOS waits for explicit Start button click.
   useEffect(() => {
@@ -2154,8 +2174,8 @@ export function SyncedVideoPlayer({
               onPlayClick={handleFirstTimeStart}
               isStartDisabled={isIOS && !iosPrimerReady}
               allowScreenTapStart={isIOS}
-              buttonLabel={isIOS ? (iosPrimerReady ? 'Click to Unmute' : 'Preparing audio...') : 'Start Watching'}
-              helperText={isIOS ? (iosPrimerReady ? 'Tap anywhere to start with audio' : 'Please wait while iPhone audio engine prepares') : 'Click to start your spiritual journey'}
+              buttonLabel={isIOS ? 'Click to Unmute' : 'Start Watching'}
+              helperText={isIOS ? 'Tap anywhere to start with audio' : 'Click to start your spiritual journey'}
             />
           )}
 
