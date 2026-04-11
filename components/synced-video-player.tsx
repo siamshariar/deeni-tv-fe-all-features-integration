@@ -198,17 +198,23 @@ const StartScreen = ({
 }) => {
   const isMobile = useMediaQuery('(max-width: 640px)')
   const isTablet = useMediaQuery('(min-width: 641px) and (max-width: 1024px)')
+
+  const handleScreenPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!allowScreenTapStart || isStartDisabled) return
+
+    // Prevent double-trigger when user taps the start button itself.
+    const target = event.target as HTMLElement | null
+    if (target?.closest('[data-start-trigger="true"]')) return
+
+    onPlayClick()
+  }
   
   return (
     <motion.div 
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      onPointerUp={() => {
-        if (allowScreenTapStart && !isStartDisabled) {
-          onPlayClick()
-        }
-      }}
+      onPointerUp={handleScreenPointerUp}
       className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-zinc-900 via-zinc-900 to-black z-50 overflow-hidden"
     >      <motion.div
         initial={{ scale: 0.9, y: 20 }}
@@ -309,6 +315,7 @@ const StartScreen = ({
             className="flex justify-center mt-1 sm:mt-2"
           >
             <Button
+              data-start-trigger="true"
               onClick={(event) => {
                 event.stopPropagation()
                 if (!isStartDisabled) {
@@ -791,6 +798,7 @@ export function SyncedVideoPlayer({
   const hasAutoUnmutedRef = useRef(false)
   const iosAudioUnlockedRef = useRef(false)
   const iosUnmuteRetryRef = useRef(false)
+  const startInProgressRef = useRef(false)
 
   const isMobile = useMediaQuery('(max-width: 768px)')
   const isTablet = useMediaQuery('(min-width: 769px) and (max-width: 1024px)')
@@ -1555,8 +1563,8 @@ export function SyncedVideoPlayer({
     }
   }, [isLoading, volume, isIOS, initializePlayer, loadVideo, seekTo, play, setYouTubeVolume, setYouTubeMuted, onChannelChange, onStartClick, getDuration, fetchFromBrowserAPI, notifyParentScheduleChange, isPrimedRef, setPlayerCallbacks, unmuteAndResume])
 
-  const handleFirstTimeStart = useCallback(async () => {
-    if (isLoading) return
+  const handleFirstTimeStart = useCallback(() => {
+    if (isLoading || startInProgressRef.current) return
 
     let unlockReady = false
 
@@ -1579,43 +1587,57 @@ export function SyncedVideoPlayer({
       }
     }
 
-    // Fetch channel list from live API and store in localStorage (only if not cached)
-    let channels = getStoredApiChannels()
-    if (channels.length === 0) {
-      try {
-        // Try live API directly (no JWT needed for channel list)
-        const res = await clientFetchWithAuth('https://api.deeniinfotech.com/api/tv-channels')
-        if (res?.data?.length) {
-            saveApiChannels(res.data)
-            channels = res.data
-          }
-      } catch {
-        // ignore
-      }
-      // Fallback: Next.js API route (serves live data with static fallback for STG)
-      if (channels.length === 0) {
-        try {
-          const res = await fetch('/api/tv-channels')
-          const json = await res.json()
-          if (json?.data?.length) {
-            saveApiChannels(json.data)
-            channels = json.data
-          }
-        } catch { /* ignore */ }
-      }
-    }
-    if (channels.length > 0) {
-      setApiChannels(channels)
+    startInProgressRef.current = true
+
+    const completeStartAttempt = () => {
+      startInProgressRef.current = false
     }
 
-    // Start the player
+    const refreshChannelListInBackground = async () => {
+      // Channel metadata must not block the first playback start on iOS.
+      let channels = getStoredApiChannels()
+
+      if (channels.length === 0) {
+        try {
+          const live = await clientFetchWithAuth('https://api.deeniinfotech.com/api/tv-channels')
+          if (live?.data?.length) {
+            saveApiChannels(live.data)
+            channels = live.data
+          }
+        } catch {
+          // ignore
+        }
+
+        if (channels.length === 0) {
+          try {
+            const res = await fetch('/api/tv-channels')
+            const json = await res.json()
+            if (json?.data?.length) {
+              saveApiChannels(json.data)
+              channels = json.data
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
+
+      if (channels.length > 0 && mountedRef.current) {
+        setApiChannels(channels)
+      }
+    }
+
+    void refreshChannelListInBackground()
+
+    // Start playback first; do not wait for channel metadata APIs.
     if (!currentChannelId) {
       setShowChannelSelector(true)
+      completeStartAttempt()
     } else {
       // Immediately hide the start screen and show the loading overlay
       setShowStartScreen(false)
       setIsLoading(true)
-      loadChannel(currentChannelId, { preferUnmutedStart: unlockReady })
+      loadChannel(currentChannelId, { preferUnmutedStart: unlockReady }).finally(completeStartAttempt)
     }
   }, [currentChannelId, iosPrimerReady, isIOS, isLoading, isPrimedRef, loadChannel, primePlayer, unmuteAndResume, volume])
 
