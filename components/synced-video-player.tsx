@@ -799,6 +799,7 @@ export function SyncedVideoPlayer({
   const iosAudioUnlockedRef = useRef(false)
   const iosUnmuteRetryRef = useRef(false)
   const startInProgressRef = useRef(false)
+  const pendingStartTapRef = useRef(false)
 
   const isMobile = useMediaQuery('(max-width: 768px)')
   const isTablet = useMediaQuery('(min-width: 769px) and (max-width: 1024px)')
@@ -1570,10 +1571,13 @@ export function SyncedVideoPlayer({
 
     if (isIOS) {
       if (!iosPrimerReady || !isPrimedRef.current) {
-        // Gesture-safe fallback: keep priming and wait for ready state.
+        // Keep the first tap intent so it can auto-start as soon as primer is ready.
+        pendingStartTapRef.current = true
         primePlayer()
         return
       }
+
+      pendingStartTapRef.current = false
 
       // Keep this synchronous in the tap event to satisfy iOS audio gesture rules.
       unlockReady = isPrimedRef.current
@@ -1640,6 +1644,17 @@ export function SyncedVideoPlayer({
       loadChannel(currentChannelId, { preferUnmutedStart: unlockReady }).finally(completeStartAttempt)
     }
   }, [currentChannelId, iosPrimerReady, isIOS, isLoading, isPrimedRef, loadChannel, primePlayer, unmuteAndResume, volume])
+
+  // If user tapped while iOS primer was still initializing, auto-start when ready.
+  useEffect(() => {
+    if (!isIOS) return
+    if (!pendingStartTapRef.current) return
+    if (!iosPrimerReady || !isPrimedRef.current) return
+    if (isLoading || startInProgressRef.current) return
+
+    pendingStartTapRef.current = false
+    handleFirstTimeStart()
+  }, [handleFirstTimeStart, iosPrimerReady, isIOS, isLoading, isPrimedRef])
 
   const handleSelectChannel = useCallback((channelId: string) => {
     setShowChannelSelector(false)
@@ -1870,6 +1885,7 @@ export function SyncedVideoPlayer({
       iosAudioUnlockedRef.current = false
       iosUnmuteRetryRef.current = false
       startInProgressRef.current = false
+      pendingStartTapRef.current = false
 
       destroy()
       setIosPrimerReady(false)
