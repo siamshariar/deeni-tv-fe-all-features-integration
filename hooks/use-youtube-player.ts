@@ -503,6 +503,8 @@ export function useYouTubePlayer() {
     }
     playerRef.current = null
     durationRef.current = 0
+    videoIdRef.current = ''
+    isPrimedRef.current = false
   }, [])
   
   useEffect(() => {
