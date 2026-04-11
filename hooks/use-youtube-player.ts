@@ -333,6 +333,10 @@ export function useYouTubePlayer() {
     try {
       isMutedRef.current = false
       volumeRef.current = targetVolume
+      // Keep playback operations inside the same user gesture for iOS.
+      if (typeof playerRef.current.playVideo === 'function') {
+        playerRef.current.playVideo()
+      }
       if (typeof playerRef.current.unMute === 'function') {
         playerRef.current.unMute()
       }
