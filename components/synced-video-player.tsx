@@ -2172,7 +2172,7 @@ export function SyncedVideoPlayer({
           {showStartScreen && !isLoading && !apiError && (
             <StartScreen
               onPlayClick={handleFirstTimeStart}
-              isStartDisabled={isIOS && !iosPrimerReady}
+              isStartDisabled={false}
               allowScreenTapStart={isIOS}
               buttonLabel={isIOS ? 'Click to Unmute' : 'Start Watching'}
               helperText={isIOS ? 'Tap anywhere to start with audio' : 'Click to start your spiritual journey'}
