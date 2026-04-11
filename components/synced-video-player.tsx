@@ -2190,7 +2190,7 @@ export function SyncedVideoPlayer({
               onPlayClick={handleFirstTimeStart}
               isStartDisabled={false}
               allowScreenTapStart={isIOS}
-              buttonLabel={isIOS ? 'Click to Unmute' : 'Start Watching'}
+              buttonLabel={isIOS ? 'Start Watching' : 'Start Watching'}
               helperText={isIOS ? 'Tap anywhere to start with audio' : 'Click to start your spiritual journey'}
             />
           )}
