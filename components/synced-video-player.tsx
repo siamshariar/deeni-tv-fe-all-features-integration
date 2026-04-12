@@ -1861,6 +1861,8 @@ export function SyncedVideoPlayer({
   const handleReload = useCallback(() => {
     if (!currentChannelId) return
     console.log('🔄 Reloading channel:', currentChannelId)
+
+    const preferUnmutedStart = isIOS && iosAudioUnlockedRef.current && !isMuted
     
     // Save currently-playing video to history BEFORE reload so it appears in the list
     if (currentProgram) {
@@ -1873,38 +1875,18 @@ export function SyncedVideoPlayer({
     setCurrentProgram(null)
     setApiError(null)
     setIframeVisible(false) // hide iframe until next real PLAYING event
-    // Reset mute state to true (start muted again)
-    setIsMuted(true)
-    setYouTubeMuted(true)
+    setShowStartScreen(false)
+    // Keep current mute preference on reload; loadChannel applies the final mute state.
+    setYouTubeMuted(isMuted)
     setShowAutoUnmuteNotification(false)
-    hasAutoUnmutedRef.current = false
-
-    if (isIOS) {
-      // iOS requirement: reload should behave like fresh page load and require
-      // an explicit unmute/start gesture from the start screen.
-      setShowStartScreen(true)
-      setIsLoading(false)
-      setShowBrandedOverlay(false)
-      iosAudioUnlockedRef.current = false
-      iosUnmuteRetryRef.current = false
-      startInProgressRef.current = false
-      pendingStartTapRef.current = false
-
-      destroy()
-      setIosPrimerReady(false)
-      primePlayer().finally(() => {
-        if (mountedRef.current && isPrimedRef.current) {
-          setIosPrimerReady(true)
-        }
-      })
-      return
-    }
+    hasAutoUnmutedRef.current = !isMuted
     
-    // Reload same channel — previousVideos state and localStorage are preserved
+    // Reload same channel — previousVideos state and localStorage are preserved.
+    // For iOS, keep wrapper reload flow without showing the start screen again.
     setTimeout(() => {
-      loadChannel(currentChannelId)
+      loadChannel(currentChannelId, { preferUnmutedStart })
     }, 200)
-  }, [currentChannelId, currentProgram, destroy, isIOS, isPrimedRef, loadChannel, primePlayer, setYouTubeMuted])
+  }, [currentChannelId, currentProgram, isIOS, isMuted, loadChannel, setYouTubeMuted])
 
   // Auto-start on web/android. iOS waits for explicit Start button click.
   useEffect(() => {
@@ -2192,9 +2174,9 @@ export function SyncedVideoPlayer({
             <StartScreen
               onPlayClick={handleFirstTimeStart}
               isStartDisabled={false}
-              allowScreenTapStart={isIOS}
+              allowScreenTapStart={false}
               buttonLabel={isIOS ? 'Start Watching' : 'Start Watching'}
-              helperText={isIOS ? 'Tap anywhere to start with audio' : 'Click to start your spiritual journey'}
+              helperText={isIOS ? 'Tap Start Watching to start with audio' : 'Click to start your spiritual journey'}
             />
           )}
 
