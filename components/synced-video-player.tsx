@@ -1658,8 +1658,11 @@ export function SyncedVideoPlayer({
 
   const handleSelectChannel = useCallback((channelId: string) => {
     setShowChannelSelector(false)
-    loadChannel(channelId)
-  }, [loadChannel])
+
+    // On iOS, preserve unlocked audio across channel switches when user is unmuted.
+    const preferUnmutedStart = isIOS && iosAudioUnlockedRef.current && !isMuted
+    loadChannel(channelId, { preferUnmutedStart })
+  }, [isIOS, isMuted, loadChannel])
 
   const handleOpenChannelSelector = useCallback(async () => {
     // First, show the modal with current channels
