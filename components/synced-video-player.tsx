@@ -1571,8 +1571,11 @@ export function SyncedVideoPlayer({
 
     if (isIOS) {
       if (!iosPrimerReady || !isPrimedRef.current) {
-        // Keep the first tap intent so it can auto-start as soon as primer is ready.
+        // Queue the intent and show immediate loader feedback so the first click
+        // feels responsive right after a page reload on iOS.
         pendingStartTapRef.current = true
+        setShowStartScreen(false)
+        setIsLoading(true)
         primePlayer()
         return
       }
@@ -1645,12 +1648,18 @@ export function SyncedVideoPlayer({
     }
   }, [currentChannelId, iosPrimerReady, isIOS, isLoading, isPrimedRef, loadChannel, primePlayer, unmuteAndResume, volume])
 
-  // If user tapped while iOS primer was still initializing, auto-start when ready.
+  // If the first Start click happened before iOS primer became ready, continue
+  // automatically once primer is ready (no second click required).
   useEffect(() => {
     if (!isIOS) return
     if (!pendingStartTapRef.current) return
     if (!iosPrimerReady || !isPrimedRef.current) return
-    if (isLoading || startInProgressRef.current) return
+    if (startInProgressRef.current) return
+
+    if (isLoading) {
+      setIsLoading(false)
+      return
+    }
 
     pendingStartTapRef.current = false
     handleFirstTimeStart()
