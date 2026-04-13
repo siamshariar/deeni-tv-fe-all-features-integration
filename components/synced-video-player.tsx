@@ -803,6 +803,7 @@ export function SyncedVideoPlayer({
   const isLoadingRef = useRef(false)
   const playerReadyRef = useRef(false)
   const iframeVisibleRef = useRef(false)
+  const brandedOverlayHideTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const playbackStartWatchdogRef = useRef<NodeJS.Timeout | null>(null)
   const playbackRecoveryAttemptRef = useRef(0)
   const currentLoadAttemptRef = useRef(0)
@@ -888,6 +889,21 @@ export function SyncedVideoPlayer({
       playbackStartWatchdogRef.current = null
     }
   }, [])
+
+  const clearBrandedOverlayHideTimeout = useCallback(() => {
+    if (brandedOverlayHideTimeoutRef.current) {
+      clearTimeout(brandedOverlayHideTimeoutRef.current)
+      brandedOverlayHideTimeoutRef.current = null
+    }
+  }, [])
+
+  const hideBrandedOverlayAfterDelay = useCallback((delayMs: number = 3500) => {
+    clearBrandedOverlayHideTimeout()
+    brandedOverlayHideTimeoutRef.current = setTimeout(() => {
+      if (!mountedRef.current) return
+      setShowBrandedOverlay(false)
+    }, delayMs)
+  }, [clearBrandedOverlayHideTimeout])
 
   // iOS only: keep start screen with explicit user gesture.
   useEffect(() => {
@@ -1392,6 +1408,7 @@ export function SyncedVideoPlayer({
 
       setIsLoading(false)
       setShowStartScreen(false)
+      clearBrandedOverlayHideTimeout()
       setShowBrandedOverlay(true)
       setCurrentProgram(program)
       setCurrentTime(startTime)
@@ -1504,7 +1521,7 @@ export function SyncedVideoPlayer({
             console.log('✅ Playback progress detected without PLAYING callback; restoring visuals')
             setIframeVisible(true)
             setIsLoading(false)
-            setShowBrandedOverlay(false)
+            hideBrandedOverlayAfterDelay(3500)
             clearPlaybackStartWatchdog()
             playbackRecoveryAttemptRef.current = 0
           }
@@ -1525,7 +1542,7 @@ export function SyncedVideoPlayer({
             console.log('✅ Watchdog found active playback; restoring visuals without reload')
             setIframeVisible(true)
             setIsLoading(false)
-            setShowBrandedOverlay(false)
+            hideBrandedOverlayAfterDelay(3500)
             playbackRecoveryAttemptRef.current = 0
             clearPlaybackStartWatchdog()
             return
@@ -1538,6 +1555,7 @@ export function SyncedVideoPlayer({
           play()
 
           if (playbackRecoveryAttemptRef.current >= 1) {
+            clearBrandedOverlayHideTimeout()
             setShowBrandedOverlay(false)
             setApiError('Playback is taking longer than expected. Please tap Refresh.')
             return
@@ -1584,7 +1602,7 @@ export function SyncedVideoPlayer({
 
           setIsLoading(false)
           setIframeVisible(true)
-          setShowBrandedOverlay(false)
+          hideBrandedOverlayAfterDelay(3500)
         } else if (state === YT_STATE.PAUSED) {
           console.log('⏸️ Video paused - resuming')
           play()
@@ -1606,6 +1624,7 @@ export function SyncedVideoPlayer({
       const onPlayerError = (code: number, msg: string) => {
         console.error('Player error:', code, msg)
         clearPlaybackStartWatchdog()
+        clearBrandedOverlayHideTimeout()
         setShowBrandedOverlay(false)
         if (code === 2 || code === 5 || code === 100) {
           setApiError(`Playback error: ${msg}`)
@@ -1652,11 +1671,12 @@ export function SyncedVideoPlayer({
     } catch (error) {
       console.error('API call failed:', error)
       clearPlaybackStartWatchdog()
+      clearBrandedOverlayHideTimeout()
       setShowBrandedOverlay(false)
       setApiError(error instanceof Error ? error.message : 'Failed to load video')
       setIsLoading(false)
     }
-  }, [volume, isIOS, initializePlayer, loadVideo, seekTo, play, setYouTubeVolume, setYouTubeMuted, onChannelChange, onStartClick, getDuration, getCurrentTime, fetchFromBrowserAPI, notifyParentScheduleChange, isPrimedRef, setPlayerCallbacks, unmuteAndResume, clearPlaybackStartWatchdog])
+  }, [volume, isIOS, initializePlayer, loadVideo, seekTo, play, setYouTubeVolume, setYouTubeMuted, onChannelChange, onStartClick, getDuration, getCurrentTime, fetchFromBrowserAPI, notifyParentScheduleChange, isPrimedRef, setPlayerCallbacks, unmuteAndResume, clearPlaybackStartWatchdog, clearBrandedOverlayHideTimeout, hideBrandedOverlayAfterDelay])
 
   const handleFirstTimeStart = useCallback(() => {
     if (isLoadingRef.current || startInProgressRef.current) return
@@ -1665,11 +1685,13 @@ export function SyncedVideoPlayer({
 
     if (isIOS) {
       if (!iosPrimerReady || !isPrimedRef.current) {
-        // Queue the intent and show immediate loader feedback so the first click
-        // feels responsive right after a page reload on iOS.
+        // Keep Start screen visible until primer is ready. Avoid auto-starting
+        // outside a fresh gesture, which can fail on iOS Safari after reload.
         pendingStartTapRef.current = true
-        setShowStartScreen(false)
-        setIsLoading(true)
+        setShowStartScreen(true)
+        setIsLoading(false)
+        clearBrandedOverlayHideTimeout()
+        setShowBrandedOverlay(false)
         primePlayer()
         return
       }
@@ -1740,7 +1762,7 @@ export function SyncedVideoPlayer({
       setIsLoading(true)
       loadChannel(currentChannelId, { preferUnmutedStart: unlockReady }).finally(completeStartAttempt)
     }
-  }, [currentChannelId, iosPrimerReady, isIOS, isPrimedRef, loadChannel, primePlayer, unmuteAndResume, volume])
+  }, [currentChannelId, iosPrimerReady, isIOS, isPrimedRef, loadChannel, primePlayer, unmuteAndResume, volume, clearBrandedOverlayHideTimeout])
 
   // If the first Start click happened before iOS primer became ready, continue
   // automatically once primer is ready (no second click required).
@@ -1750,17 +1772,23 @@ export function SyncedVideoPlayer({
     if (!iosPrimerReady || !isPrimedRef.current) return
     if (startInProgressRef.current) return
 
-    if (isLoadingRef.current) {
-      setIsLoading(false)
-    }
-
     pendingStartTapRef.current = false
-    // Run on the next tick so handleFirstTimeStart sees the latest loading state.
-    setTimeout(() => {
-      if (!mountedRef.current || startInProgressRef.current) return
-      handleFirstTimeStart()
-    }, 0)
-  }, [handleFirstTimeStart, iosPrimerReady, isIOS, isPrimedRef])
+    setIsLoading(false)
+    setShowStartScreen(true)
+    clearBrandedOverlayHideTimeout()
+    setShowBrandedOverlay(false)
+  }, [iosPrimerReady, isIOS, isPrimedRef, clearBrandedOverlayHideTimeout])
+
+  // iOS guard: never leave a blank/black frame while waiting for first visible frame.
+  useEffect(() => {
+    if (!isIOS) return
+    if (showStartScreen || isLoading || apiError) return
+    if (!playerReady) return
+    if (iframeVisible) return
+    if (showBrandedOverlay) return
+
+    setShowBrandedOverlay(true)
+  }, [isIOS, showStartScreen, isLoading, apiError, playerReady, iframeVisible, showBrandedOverlay])
 
   const handleSelectChannel = useCallback((channelId: string) => {
     setShowChannelSelector(false)
@@ -1975,6 +2003,7 @@ export function SyncedVideoPlayer({
     if (!currentChannelId) return
     console.log('🔄 Reloading channel:', currentChannelId)
     clearPlaybackStartWatchdog()
+    clearBrandedOverlayHideTimeout()
     playbackRecoveryAttemptRef.current = 0
 
     const preferUnmutedStart = true
@@ -2007,7 +2036,7 @@ export function SyncedVideoPlayer({
     setTimeout(() => {
       loadChannel(currentChannelId, { preferUnmutedStart })
     }, 200)
-  }, [currentChannelId, currentProgram, isIOS, loadChannel, setYouTubeMuted, unmuteAndResume, volume, clearPlaybackStartWatchdog])
+  }, [currentChannelId, currentProgram, isIOS, loadChannel, setYouTubeMuted, unmuteAndResume, volume, clearPlaybackStartWatchdog, clearBrandedOverlayHideTimeout])
 
   // Auto-start on web/android. iOS waits for explicit Start button click.
   useEffect(() => {
@@ -2186,6 +2215,9 @@ export function SyncedVideoPlayer({
       }
       if (autoUnmuteTimerRef.current) {
         clearTimeout(autoUnmuteTimerRef.current)
+      }
+      if (brandedOverlayHideTimeoutRef.current) {
+        clearTimeout(brandedOverlayHideTimeoutRef.current)
       }
       if (playbackStartWatchdogRef.current) {
         clearTimeout(playbackStartWatchdogRef.current)
