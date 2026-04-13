@@ -31,6 +31,7 @@ declare global {
 // prime the iOS WKWebView autoplay context before the real content loads.
 // Using a well-known short video (YouTube's own "YouTube" channel intro clip).
 const IOS_PRIMER_VIDEO_ID = 'flt8T_0CD1A'
+const YT_EMBED_HOST = 'https://www.youtube-nocookie.com'
 
 export function useYouTubePlayer() {
   const playerRef = useRef<any>(null)
@@ -124,6 +125,14 @@ export function useYouTubePlayer() {
       return
     }
     
+    // Always destroy any stale player instance before creating a new one.
+    if (playerRef.current && typeof playerRef.current.destroy === 'function') {
+      try {
+        playerRef.current.destroy()
+      } catch (_) {}
+    }
+    playerRef.current = null
+    isPrimedRef.current = false
     containerRef.current.innerHTML = ''
     
     try {
@@ -138,6 +147,7 @@ export function useYouTubePlayer() {
       containerRef.current.appendChild(playerDiv)
       
       playerRef.current = new window.YT.Player(playerId, {
+        host: YT_EMBED_HOST,
         videoId: options.videoId,
         playerVars: {
           autoplay: 1,
@@ -152,6 +162,7 @@ export function useYouTubePlayer() {
           start: options.startSeconds || 0,
           playsinline: 1,
           origin: window.location.origin,
+          widget_referrer: window.location.href,
           enablejsapi: 1
         },
         events: {
@@ -247,6 +258,13 @@ export function useYouTubePlayer() {
     }
 
     try {
+      if (playerRef.current && typeof playerRef.current.destroy === 'function') {
+        try {
+          playerRef.current.destroy()
+        } catch (_) {}
+      }
+      playerRef.current = null
+      isPrimedRef.current = false
       containerRef.current.innerHTML = ''
 
       const playerId = `yt-primer-${Date.now()}`
@@ -256,6 +274,7 @@ export function useYouTubePlayer() {
       containerRef.current.appendChild(playerDiv)
 
       playerRef.current = new window.YT.Player(playerId, {
+        host: YT_EMBED_HOST,
         videoId: IOS_PRIMER_VIDEO_ID,
         playerVars: {
           autoplay: 1,
@@ -269,6 +288,7 @@ export function useYouTubePlayer() {
           iv_load_policy: 3,
           playsinline: 1,    // mandatory for iOS inline playback
           origin: typeof window !== 'undefined' ? window.location.origin : '',
+          widget_referrer: typeof window !== 'undefined' ? window.location.href : '',
           enablejsapi: 1,
         },
         events: {
@@ -500,6 +520,9 @@ export function useYouTubePlayer() {
       try {
         playerRef.current.destroy()
       } catch (err) {}
+    }
+    if (containerRef.current) {
+      containerRef.current.innerHTML = ''
     }
     playerRef.current = null
     durationRef.current = 0
