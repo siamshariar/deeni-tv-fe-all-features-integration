@@ -803,6 +803,8 @@ export function SyncedVideoPlayer({
   const isLoadingRef = useRef(false)
   const playerReadyRef = useRef(false)
   const iframeVisibleRef = useRef(false)
+  const showStartScreenRef = useRef(false)
+  const apiErrorRef = useRef<string | null>(null)
   const brandedOverlayHideTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const playbackStartWatchdogRef = useRef<NodeJS.Timeout | null>(null)
   const playbackRecoveryAttemptRef = useRef(0)
@@ -882,6 +884,8 @@ export function SyncedVideoPlayer({
   useEffect(() => { isLoadingRef.current = isLoading }, [isLoading])
   useEffect(() => { playerReadyRef.current = playerReady }, [playerReady])
   useEffect(() => { iframeVisibleRef.current = iframeVisible }, [iframeVisible])
+  useEffect(() => { showStartScreenRef.current = showStartScreen }, [showStartScreen])
+  useEffect(() => { apiErrorRef.current = apiError }, [apiError])
 
   const clearPlaybackStartWatchdog = useCallback(() => {
     if (playbackStartWatchdogRef.current) {
@@ -2273,6 +2277,8 @@ export function SyncedVideoPlayer({
   }, [isMobile])
 
   const handleActivity = useCallback(() => {
+    if (showStartScreenRef.current || isLoadingRef.current || !!apiErrorRef.current) return
+
     setControlsVisible(true)
     setShowControls(true)
     if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current)
@@ -2283,6 +2289,8 @@ export function SyncedVideoPlayer({
   }, [])
 
   useEffect(() => {
+    if (showStartScreen || isLoading || !!apiError) return
+
     const el = playerRef.current
     if (el) {
       el.addEventListener('mousemove', handleActivity)
@@ -2292,7 +2300,7 @@ export function SyncedVideoPlayer({
         el.removeEventListener('touchstart', handleActivity)
       }
     }
-  }, [handleActivity])
+  }, [handleActivity, showStartScreen, isLoading, apiError])
 
   const isLastInCycle = currentProgram && cycleInfo.total ? cycleInfo.current === cycleInfo.total : false
 
@@ -2330,7 +2338,7 @@ export function SyncedVideoPlayer({
             <StartScreen
               onPlayClick={handleFirstTimeStart}
               isStartDisabled={false}
-              allowScreenTapStart={false}
+              allowScreenTapStart={isIOS}
               buttonLabel={isIOS ? 'Start Watching' : 'Start Watching'}
               helperText={isIOS ? 'Tap Start Watching to start with audio' : 'Click to start your spiritual journey'}
             />
