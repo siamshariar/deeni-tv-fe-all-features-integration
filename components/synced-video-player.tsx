@@ -1618,6 +1618,13 @@ export function SyncedVideoPlayer({
 
           playbackRecoveryAttemptRef.current += 1
 
+          // Hard reset stale iframe/API state before retrying the same channel.
+          try {
+            destroy()
+          } catch (_) {}
+          setIframeVisible(false)
+          setPlayerReady(false)
+
           setTimeout(() => {
             if (!mountedRef.current) return
             if (currentLoadAttemptRef.current !== loadAttemptId) return
@@ -1735,7 +1742,7 @@ export function SyncedVideoPlayer({
     } finally {
       clearChannelLoadTimeout()
     }
-  }, [volume, isIOS, initializePlayer, loadVideo, seekTo, play, setYouTubeVolume, setYouTubeMuted, onChannelChange, onStartClick, getDuration, getCurrentTime, fetchFromBrowserAPI, notifyParentScheduleChange, isPrimedRef, setPlayerCallbacks, unmuteAndResume, clearPlaybackStartWatchdog, clearBrandedOverlayHideTimeout, hideBrandedOverlayAfterDelay, clearChannelLoadTimeout, primePlayer])
+  }, [volume, isIOS, initializePlayer, loadVideo, seekTo, play, setYouTubeVolume, setYouTubeMuted, onChannelChange, onStartClick, getDuration, getCurrentTime, fetchFromBrowserAPI, notifyParentScheduleChange, isPrimedRef, setPlayerCallbacks, unmuteAndResume, destroy, clearPlaybackStartWatchdog, clearBrandedOverlayHideTimeout, hideBrandedOverlayAfterDelay, clearChannelLoadTimeout, primePlayer])
 
   const handleFirstTimeStart = useCallback(() => {
     if (isLoadingRef.current || startInProgressRef.current) return
@@ -2079,6 +2086,7 @@ export function SyncedVideoPlayer({
     }
     
     // Reset player state only — do NOT touch previousVideos or localStorage
+    destroy()
     setPlayerReady(false)
     setCurrentProgram(null)
     setApiError(null)
@@ -2095,7 +2103,7 @@ export function SyncedVideoPlayer({
     setTimeout(() => {
       loadChannel(currentChannelId, { preferUnmutedStart })
     }, 200)
-  }, [currentChannelId, currentProgram, isIOS, loadChannel, setYouTubeMuted, unmuteAndResume, volume, clearPlaybackStartWatchdog, clearBrandedOverlayHideTimeout])
+  }, [currentChannelId, currentProgram, isIOS, loadChannel, setYouTubeMuted, unmuteAndResume, destroy, volume, clearPlaybackStartWatchdog, clearBrandedOverlayHideTimeout])
 
   // Auto-start on web/android. iOS waits for explicit Start button click.
   useEffect(() => {
