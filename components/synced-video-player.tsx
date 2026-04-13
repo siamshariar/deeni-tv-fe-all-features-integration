@@ -1489,6 +1489,17 @@ export function SyncedVideoPlayer({
           setIsMuted(true)
         }
 
+        // iOS/Safari can occasionally miss PLAYING while iframe is actually ready.
+        // Show iframe and retry play once so users don't get a black frame.
+        setTimeout(() => {
+          if (!mountedRef.current) return
+          if (currentLoadAttemptRef.current !== loadAttemptId) return
+          if (!iframeVisibleRef.current) {
+            setIframeVisible(true)
+            play()
+          }
+        }, 1800)
+
         // Some Safari/iOS reloads miss PLAYING callbacks; watchdog recovers once.
         clearPlaybackStartWatchdog()
         playbackStartWatchdogRef.current = setTimeout(() => {
@@ -1559,6 +1570,7 @@ export function SyncedVideoPlayer({
           console.log('⏳ Video buffering...')
         } else if (state === YT_STATE.CUED) {
           console.log('🎬 Video cued - playing')
+          setIframeVisible(true)
           play()
         }
       }
@@ -1643,13 +1655,11 @@ export function SyncedVideoPlayer({
 
       pendingStartTapRef.current = false
 
-      // Keep this synchronous in the tap event to satisfy iOS audio gesture rules.
-      unlockReady = isPrimedRef.current
-      iosAudioUnlockedRef.current = unlockReady
+      // Keep startup muted for reliability after browser reload on iOS.
+      unlockReady = false
+      iosAudioUnlockedRef.current = false
 
-      if (unlockReady) {
-        unmuteAndResume(volume)
-      } else {
+      if (!isPrimedRef.current) {
         // Best-effort: if primer wasn't ready yet, start creating it now.
         primePlayer()
       }
@@ -1707,7 +1717,7 @@ export function SyncedVideoPlayer({
       setIsLoading(true)
       loadChannel(currentChannelId, { preferUnmutedStart: unlockReady }).finally(completeStartAttempt)
     }
-  }, [currentChannelId, iosPrimerReady, isIOS, isPrimedRef, loadChannel, primePlayer, unmuteAndResume, volume])
+  }, [currentChannelId, iosPrimerReady, isIOS, isPrimedRef, loadChannel, primePlayer])
 
   // If the first Start click happened before iOS primer became ready, continue
   // automatically once primer is ready (no second click required).
@@ -1732,10 +1742,11 @@ export function SyncedVideoPlayer({
   const handleSelectChannel = useCallback((channelId: string) => {
     setShowChannelSelector(false)
 
-    // On iOS, preserve unlocked audio across channel switches when user is unmuted.
-    const preferUnmutedStart = isIOS && iosAudioUnlockedRef.current && !isMuted
-    loadChannel(channelId, { preferUnmutedStart })
-  }, [isIOS, isMuted, loadChannel])
+    // Requirement: channel switch should always restart muted.
+    iosAudioUnlockedRef.current = false
+    iosUnmuteRetryRef.current = false
+    loadChannel(channelId, { preferUnmutedStart: false })
+  }, [loadChannel])
 
   const handleOpenChannelSelector = useCallback(async () => {
     // First, show the modal with current channels
@@ -1936,8 +1947,6 @@ export function SyncedVideoPlayer({
     console.log('🔄 Reloading channel:', currentChannelId)
     clearPlaybackStartWatchdog()
     playbackRecoveryAttemptRef.current = 0
-
-    const preferUnmutedStart = isIOS && iosAudioUnlockedRef.current && !isMuted
     
     // Save currently-playing video to history BEFORE reload so it appears in the list
     if (currentProgram) {
@@ -1951,17 +1960,20 @@ export function SyncedVideoPlayer({
     setApiError(null)
     setIframeVisible(false) // hide iframe until next real PLAYING event
     setShowStartScreen(false)
-    // Keep current mute preference on reload; loadChannel applies the final mute state.
-    setYouTubeMuted(isMuted)
+    // Requirement: reload should always restart muted.
+    setIsMuted(true)
+    setYouTubeMuted(true)
     setShowAutoUnmuteNotification(false)
-    hasAutoUnmutedRef.current = !isMuted
+    hasAutoUnmutedRef.current = false
+    iosAudioUnlockedRef.current = false
+    iosUnmuteRetryRef.current = false
     
     // Reload same channel — previousVideos state and localStorage are preserved.
     // For iOS, keep wrapper reload flow without showing the start screen again.
     setTimeout(() => {
-      loadChannel(currentChannelId, { preferUnmutedStart })
+      loadChannel(currentChannelId, { preferUnmutedStart: false })
     }, 200)
-  }, [currentChannelId, currentProgram, isIOS, isMuted, loadChannel, setYouTubeMuted, clearPlaybackStartWatchdog])
+  }, [currentChannelId, currentProgram, loadChannel, setYouTubeMuted, clearPlaybackStartWatchdog])
 
   // Auto-start on web/android. iOS waits for explicit Start button click.
   useEffect(() => {
