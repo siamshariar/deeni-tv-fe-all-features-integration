@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>YouTube Proxy Player</title>
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+    }
+
+    #player {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: 0;
+      background: #000;
+    }
+  </style>
+</head>
+<body>
+  <div id="player"></div>
+  <script>
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var videoId = params.get('v') || '';
+      var start = Number(params.get('start') || '0');
+      var muted = params.get('muted') === '1';
+
+      if (!videoId) {
+        document.body.innerHTML = '';
+        return;
+      }
+
+      var onReadyQueue = [];
+      var player = null;
+
+      function post(type, payload) {
+        try {
+          window.parent.postMessage({ source: 'yt-proxy', type: type, payload: payload || {} }, '*');
+        } catch (_) {}
+      }
+
+      function ensureApi(cb) {
+        if (window.YT && window.YT.Player) {
+          cb();
+          return;
+        }
+
+        onReadyQueue.push(cb);
+        if (onReadyQueue.length > 1) return;
+
+        var script = document.createElement('script');
+        script.src = 'https://www.youtube.com/iframe_api';
+        script.async = true;
+        script.onerror = function () { post('error', { code: 0, message: 'iframe_api_load_failed' }); };
+        document.head.appendChild(script);
+      }
+
+      window.onYouTubeIframeAPIReady = function () {
+        var queue = onReadyQueue.slice();
+        onReadyQueue.length = 0;
+        queue.forEach(function (fn) {
+          try { fn(); } catch (_) {}
+        });
+      };
+
+      ensureApi(function () {
+        player = new window.YT.Player('player', {
+          host: 'https://www.youtube-nocookie.com',
+          videoId: videoId,
+          playerVars: {
+            autoplay: 1,
+            mute: muted ? 1 : 0,
+            controls: 0,
+            disablekb: 1,
+            fs: 0,
+            modestbranding: 1,
+            rel: 0,
+            iv_load_policy: 3,
+            playsinline: 1,
+            origin: window.location.origin,
+            widget_referrer: window.location.href,
+            start: isNaN(start) ? 0 : start,
+            enablejsapi: 1
+          },
+          events: {
+            onReady: function () {
+              post('ready');
+              try {
+                if (!muted && typeof player.unMute === 'function') player.unMute();
+                if (typeof player.playVideo === 'function') player.playVideo();
+              } catch (_) {}
+            },
+            onStateChange: function (event) {
+              post('state', { state: event.data });
+            },
+            onError: function (event) {
+              post('error', { code: event.data, message: 'player_error' });
+            }
+          }
+        });
+      });
+
+      window.addEventListener('message', function (event) {
+        var msg = event && event.data;
+        if (!msg || msg.source !== 'yt-proxy-host') return;
+        if (!player) return;
+
+        try {
+          if (msg.type === 'play' && typeof player.playVideo === 'function') player.playVideo();
+          if (msg.type === 'pause' && typeof player.pauseVideo === 'function') player.pauseVideo();
+          if (msg.type === 'mute' && typeof player.mute === 'function') player.mute();
+          if (msg.type === 'unmute' && typeof player.unMute === 'function') player.unMute();
+          if (msg.type === 'seek' && typeof player.seekTo === 'function') {
+            var s = Number(msg.payload && msg.payload.seconds || 0);
+            player.seekTo(isNaN(s) ? 0 : s, true);
+          }
+        } catch (_) {}
+      });
+    })();
+  </script>
+</body>
+</html>
