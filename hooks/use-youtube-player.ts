@@ -36,6 +36,7 @@ const YT_EMBED_HOST = 'https://www.youtube.com'
 export function useYouTubePlayer() {
   const playerRef = useRef<any>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const playerMountCounterRef = useRef<number>(0)
   const apiReadyRef = useRef<boolean>(false)
   const isMutedRef = useRef<boolean>(true)
   const volumeRef = useRef<number>(75)
@@ -53,6 +54,81 @@ export function useYouTubePlayer() {
   const onDurationChangeRef = useRef<((duration: number) => void) | null>(null)
   const onReadyRef = useRef<((player: any) => void) | null>(null)
   const apiLoadPromiseRef = useRef<Promise<void> | null>(null)
+
+  const nextPlayerMountId = useCallback((prefix: string) => {
+    playerMountCounterRef.current += 1
+    return `${prefix}-${Date.now()}-${playerMountCounterRef.current}`
+  }, [])
+
+  const purgeContainerEmbeds = useCallback((root: HTMLDivElement | null) => {
+    if (!root) return
+
+    // Forcefully detach old iframe nodes before creating a new YT widget.
+    // This prevents stale iOS WebKit iframe processes from surviving reloads.
+    const staleFrames = Array.from(root.querySelectorAll('iframe'))
+    staleFrames.forEach((frame) => {
+      try {
+        frame.src = 'about:blank'
+      } catch (_) {}
+      try {
+        frame.remove()
+      } catch (_) {
+        try {
+          frame.parentNode?.removeChild(frame)
+        } catch (_) {}
+      }
+    })
+
+    while (root.firstChild) {
+      root.removeChild(root.firstChild)
+    }
+  }, [])
+
+  const hardResetPlayer = useCallback(() => {
+    if (playerRef.current) {
+      try {
+        if (typeof playerRef.current.mute === 'function') {
+          playerRef.current.mute()
+        }
+      } catch (_) {}
+
+      try {
+        if (typeof playerRef.current.stopVideo === 'function') {
+          playerRef.current.stopVideo()
+        }
+      } catch (_) {}
+
+      try {
+        if (typeof playerRef.current.destroy === 'function') {
+          playerRef.current.destroy()
+        }
+      } catch (_) {}
+    }
+
+    playerRef.current = null
+    durationRef.current = 0
+    videoIdRef.current = ''
+    isPrimedRef.current = false
+
+    purgeContainerEmbeds(containerRef.current)
+  }, [purgeContainerEmbeds])
+
+  const createFreshPlayerMount = useCallback((prefix: string) => {
+    const root = containerRef.current
+    if (!root) return null
+
+    purgeContainerEmbeds(root)
+
+    const mount = document.createElement('div')
+    mount.id = nextPlayerMountId(prefix)
+    mount.style.width = '100%'
+    mount.style.height = '100%'
+    mount.style.position = 'absolute'
+    mount.style.top = '0'
+    mount.style.left = '0'
+    root.appendChild(mount)
+    return mount
+  }, [nextPlayerMountId, purgeContainerEmbeds])
   
   const loadYouTubeAPI = useCallback((): Promise<void> => {
     if (apiReadyRef.current || (window.YT && window.YT.Player)) {
@@ -125,28 +201,17 @@ export function useYouTubePlayer() {
       return
     }
     
-    // Always destroy any stale player instance before creating a new one.
-    if (playerRef.current && typeof playerRef.current.destroy === 'function') {
-      try {
-        playerRef.current.destroy()
-      } catch (_) {}
-    }
-    playerRef.current = null
-    isPrimedRef.current = false
-    containerRef.current.innerHTML = ''
+    // Always force a full teardown + DOM purge before creating a new player.
+    hardResetPlayer()
     
     try {
-      const playerId = `youtube-player-${Date.now()}`
-      const playerDiv = document.createElement('div')
-      playerDiv.id = playerId
-      playerDiv.style.width = '100%'
-      playerDiv.style.height = '100%'
-      playerDiv.style.position = 'absolute'
-      playerDiv.style.top = '0'
-      playerDiv.style.left = '0'
-      containerRef.current.appendChild(playerDiv)
+      const playerDiv = createFreshPlayerMount('youtube-player')
+      if (!playerDiv) {
+        options.onError?.(0, 'Failed to create player container')
+        return
+      }
       
-      playerRef.current = new window.YT.Player(playerId, {
+      playerRef.current = new window.YT.Player(playerDiv.id, {
         host: YT_EMBED_HOST,
         videoId: options.videoId,
         playerVars: {
@@ -233,7 +298,7 @@ export function useYouTubePlayer() {
     } catch (err) {
       options.onError?.(0, 'Failed to create player')
     }
-  }, [loadYouTubeAPI])
+  }, [createFreshPlayerMount, hardResetPlayer, loadYouTubeAPI])
 
   // ── primePlayer ──────────────────────────────────────────────────────────────
   // Creates a MUTED, HIDDEN YouTube player on mount — no user gesture required.
@@ -257,22 +322,12 @@ export function useYouTubePlayer() {
     }
 
     try {
-      if (playerRef.current && typeof playerRef.current.destroy === 'function') {
-        try {
-          playerRef.current.destroy()
-        } catch (_) {}
-      }
-      playerRef.current = null
-      isPrimedRef.current = false
-      containerRef.current.innerHTML = ''
+      hardResetPlayer()
 
-      const playerId = `yt-primer-${Date.now()}`
-      const playerDiv = document.createElement('div')
-      playerDiv.id = playerId
-      playerDiv.style.cssText = 'width:100%;height:100%;position:absolute;top:0;left:0;'
-      containerRef.current.appendChild(playerDiv)
+      const playerDiv = createFreshPlayerMount('yt-primer')
+      if (!playerDiv) return
 
-      playerRef.current = new window.YT.Player(playerId, {
+      playerRef.current = new window.YT.Player(playerDiv.id, {
         host: YT_EMBED_HOST,
         videoId: IOS_PRIMER_VIDEO_ID,
         playerVars: {
@@ -339,7 +394,7 @@ export function useYouTubePlayer() {
     } catch (_) {
       // Silently swallow — worst case the normal initializePlayer path runs on tap
     }
-  }, [loadYouTubeAPI])
+  }, [createFreshPlayerMount, hardResetPlayer, loadYouTubeAPI])
 
   // ── unmuteAndResume ──────────────────────────────────────────────────────────
   // Call this SYNCHRONOUSLY inside a user-gesture handler (e.g. button onClick).
@@ -514,19 +569,8 @@ export function useYouTubePlayer() {
   }, [])
   
   const destroy = useCallback(() => {
-    if (playerRef.current && typeof playerRef.current.destroy === 'function') {
-      try {
-        playerRef.current.destroy()
-      } catch (err) {}
-    }
-    if (containerRef.current) {
-      containerRef.current.innerHTML = ''
-    }
-    playerRef.current = null
-    durationRef.current = 0
-    videoIdRef.current = ''
-    isPrimedRef.current = false
-  }, [])
+    hardResetPlayer()
+  }, [hardResetPlayer])
 
   // Safari/iOS hard reload can leave a zombie iframe/session unless we
   // explicitly tear down the player during page lifecycle events.
@@ -534,28 +578,7 @@ export function useYouTubePlayer() {
     if (typeof window === 'undefined') return
 
     const cleanupOnPageExit = () => {
-      try {
-        if (playerRef.current) {
-          if (typeof playerRef.current.mute === 'function') {
-            playerRef.current.mute()
-          }
-          if (typeof playerRef.current.stopVideo === 'function') {
-            playerRef.current.stopVideo()
-          }
-          if (typeof playerRef.current.destroy === 'function') {
-            playerRef.current.destroy()
-          }
-        }
-      } catch (_) {}
-
-      playerRef.current = null
-      durationRef.current = 0
-      videoIdRef.current = ''
-      isPrimedRef.current = false
-
-      if (containerRef.current) {
-        containerRef.current.innerHTML = ''
-      }
+      hardResetPlayer()
     }
 
     window.addEventListener('pagehide', cleanupOnPageExit)
@@ -565,7 +588,7 @@ export function useYouTubePlayer() {
       window.removeEventListener('pagehide', cleanupOnPageExit)
       window.removeEventListener('beforeunload', cleanupOnPageExit)
     }
-  }, [])
+  }, [hardResetPlayer])
   
   useEffect(() => {
     return () => { destroy() }
