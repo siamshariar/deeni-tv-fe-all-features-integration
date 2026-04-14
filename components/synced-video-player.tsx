@@ -814,6 +814,7 @@ export function SyncedVideoPlayer({
   const iosAudioUnlockedRef = useRef(false)
   const iosUnmuteRetryRef = useRef(false)
   const startInProgressRef = useRef(false)
+  const hasPressedStartRef = useRef(false)
   const pendingStartTapRef = useRef(false)
   const isLoadingRef = useRef(false)
   const playerReadyRef = useRef(false)
@@ -934,7 +935,7 @@ export function SyncedVideoPlayer({
 
   // iOS only: keep start screen with explicit user gesture.
   useEffect(() => {
-    setShowStartScreen(isIOS)
+    setShowStartScreen(isIOS && !hasPressedStartRef.current)
     if (!isIOS) {
       setIosPrimerReady(true)
     }
@@ -1363,12 +1364,12 @@ export function SyncedVideoPlayer({
       if (currentLoadAttemptRef.current !== loadAttemptId) return
       if (playerReadyRef.current || iframeVisibleRef.current) return
 
-      console.warn('⚠️ Channel load timeout: recovering to Start screen')
+      console.warn('⚠️ Channel load timeout: recovering without reopening Start screen')
       startInProgressRef.current = false
       setIsLoading(false)
       setShowBrandedOverlay(false)
       setApiError(null)
-      setShowStartScreen(true)
+      setShowStartScreen(false)
 
       if (isIOS) {
         primePlayer().catch(() => {})
@@ -1756,6 +1757,9 @@ export function SyncedVideoPlayer({
   const handleFirstTimeStart = useCallback((opts?: { deferredFromPrimerReady?: boolean }) => {
     if (isLoadingRef.current || startInProgressRef.current) return
 
+    // Once user presses Start, do not show Start screen again in this page session.
+    hasPressedStartRef.current = true
+
     let unlockReady = false
 
     if (isIOS) {
@@ -1763,7 +1767,7 @@ export function SyncedVideoPlayer({
         // Keep Start screen visible until primer is ready. Avoid auto-starting
         // outside a fresh gesture, which can fail on iOS Safari after reload.
         pendingStartTapRef.current = true
-        setShowStartScreen(true)
+        setShowStartScreen(false)
         // Give immediate feedback that the tap was accepted while primer finishes.
         setIsLoading(true)
         clearBrandedOverlayHideTimeout()
