@@ -31,7 +31,7 @@ declare global {
 // prime the iOS WKWebView autoplay context before the real content loads.
 // Using a well-known short video (YouTube's own "YouTube" channel intro clip).
 const IOS_PRIMER_VIDEO_ID = 'flt8T_0CD1A'
-const YT_EMBED_HOST = 'https://www.youtube-nocookie.com'
+const YT_EMBED_HOST = 'https://www.youtube.com'
 
 export function useYouTubePlayer() {
   const playerRef = useRef<any>(null)
@@ -162,7 +162,6 @@ export function useYouTubePlayer() {
           start: options.startSeconds || 0,
           playsinline: 1,
           origin: window.location.origin,
-          widget_referrer: window.location.href,
           enablejsapi: 1
         },
         events: {
@@ -218,7 +217,7 @@ export function useYouTubePlayer() {
             // Allow list — must include autoplay for iOS WKWebView / Safari
             iframe.setAttribute(
               'allow',
-              'autoplay; encrypted-media; picture-in-picture; fullscreen; accelerometer; gyroscope; clipboard-write; web-share'
+              'autoplay; encrypted-media; picture-in-picture; fullscreen; accelerometer; gyroscope; clipboard-write'
             )
             iframe.setAttribute('allowfullscreen', 'true')
             iframe.setAttribute('allowtransparency', 'true')
@@ -288,7 +287,6 @@ export function useYouTubePlayer() {
           iv_load_policy: 3,
           playsinline: 1,    // mandatory for iOS inline playback
           origin: typeof window !== 'undefined' ? window.location.origin : '',
-          widget_referrer: typeof window !== 'undefined' ? window.location.href : '',
           enablejsapi: 1,
         },
         events: {
@@ -528,6 +526,45 @@ export function useYouTubePlayer() {
     durationRef.current = 0
     videoIdRef.current = ''
     isPrimedRef.current = false
+  }, [])
+
+  // Safari/iOS hard reload can leave a zombie iframe/session unless we
+  // explicitly tear down the player during page lifecycle events.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const cleanupOnPageExit = () => {
+      try {
+        if (playerRef.current) {
+          if (typeof playerRef.current.mute === 'function') {
+            playerRef.current.mute()
+          }
+          if (typeof playerRef.current.stopVideo === 'function') {
+            playerRef.current.stopVideo()
+          }
+          if (typeof playerRef.current.destroy === 'function') {
+            playerRef.current.destroy()
+          }
+        }
+      } catch (_) {}
+
+      playerRef.current = null
+      durationRef.current = 0
+      videoIdRef.current = ''
+      isPrimedRef.current = false
+
+      if (containerRef.current) {
+        containerRef.current.innerHTML = ''
+      }
+    }
+
+    window.addEventListener('pagehide', cleanupOnPageExit)
+    window.addEventListener('beforeunload', cleanupOnPageExit)
+
+    return () => {
+      window.removeEventListener('pagehide', cleanupOnPageExit)
+      window.removeEventListener('beforeunload', cleanupOnPageExit)
+    }
   }, [])
   
   useEffect(() => {
