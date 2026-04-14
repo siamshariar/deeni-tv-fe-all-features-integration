@@ -815,6 +815,7 @@ export function SyncedVideoPlayer({
   const iosUnmuteRetryRef = useRef(false)
   const startInProgressRef = useRef(false)
   const hasPressedStartRef = useRef(false)
+  const startWantsUnmuteRef = useRef(false)
   const pendingStartTapRef = useRef(false)
   const isLoadingRef = useRef(false)
   const playerReadyRef = useRef(false)
@@ -863,6 +864,7 @@ export function SyncedVideoPlayer({
     setMuted: setYouTubeMuted,
     seekTo,
     getCurrentTime,
+    getIsMuted,
     play,
     destroy
   } = useYouTubePlayer()
@@ -1568,6 +1570,23 @@ export function SyncedVideoPlayer({
           setIsMuted(true)
         }
 
+        const enforceUnmutedPlayback = (attempt: number = 0) => {
+          if (!shouldStartUnmuted) return
+          if (!mountedRef.current || isStaleLoadAttempt()) return
+
+          unmuteAndResume(volume)
+          setYouTubeMuted(false)
+          setIsMuted(false)
+
+          if (!getIsMuted()) return
+          if (attempt >= 4) return
+
+          const delay = attempt === 0 ? 120 : 280
+          setTimeout(() => enforceUnmutedPlayback(attempt + 1), delay)
+        }
+
+        enforceUnmutedPlayback(0)
+
         // Some iOS/Safari sessions play video but miss PLAYING callback.
         // If time progresses, force-restore visuals to avoid black-screen hang.
         const recoverVisualPlaybackIfNeeded = () => {
@@ -1659,11 +1678,20 @@ export function SyncedVideoPlayer({
           clearPlaybackStartWatchdog()
           playbackRecoveryAttemptRef.current = 0
 
-          if (isIOS && shouldStartUnmuted && !iosUnmuteRetryRef.current) {
+          if (shouldStartUnmuted && !iosUnmuteRetryRef.current) {
             iosUnmuteRetryRef.current = true
             unmuteAndResume(volume)
             setYouTubeMuted(false)
             setIsMuted(false)
+
+            if (getIsMuted()) {
+              setTimeout(() => {
+                if (!mountedRef.current || isStaleLoadAttempt()) return
+                unmuteAndResume(volume)
+                setYouTubeMuted(false)
+                setIsMuted(false)
+              }, 220)
+            }
           }
 
           setIsLoading(false)
@@ -1752,7 +1780,7 @@ export function SyncedVideoPlayer({
         clearChannelLoadTimeout()
       }
     }
-  }, [volume, isIOS, initializePlayer, loadVideo, seekTo, play, setYouTubeVolume, setYouTubeMuted, onChannelChange, onStartClick, getDuration, getCurrentTime, fetchFromBrowserAPI, notifyParentScheduleChange, isPrimedRef, setPlayerCallbacks, unmuteAndResume, destroy, clearPlaybackStartWatchdog, clearBrandedOverlayHideTimeout, hideBrandedOverlayAfterDelay, clearChannelLoadTimeout, primePlayer])
+  }, [volume, isIOS, initializePlayer, loadVideo, seekTo, play, setYouTubeVolume, setYouTubeMuted, onChannelChange, onStartClick, getDuration, getCurrentTime, getIsMuted, fetchFromBrowserAPI, notifyParentScheduleChange, isPrimedRef, setPlayerCallbacks, unmuteAndResume, destroy, clearPlaybackStartWatchdog, clearBrandedOverlayHideTimeout, hideBrandedOverlayAfterDelay, clearChannelLoadTimeout, primePlayer])
 
   const handleFirstTimeStart = useCallback((opts?: { deferredFromPrimerReady?: boolean }) => {
     const isDeferredStart = opts?.deferredFromPrimerReady === true
@@ -1769,6 +1797,8 @@ export function SyncedVideoPlayer({
 
     // Once user presses Start, do not show Start screen again in this page session.
     hasPressedStartRef.current = true
+    // User intent: pressing Start means playback should begin with sound.
+    startWantsUnmuteRef.current = true
 
     let unlockReady = false
 
@@ -1788,12 +1818,14 @@ export function SyncedVideoPlayer({
 
       pendingStartTapRef.current = false
 
-      // If this start was deferred until primer became ready, we are now outside
-      // the original tap gesture. In that case continue safely (muted) instead
-      // of attempting unmute in a non-gesture context.
+      // Deferred start keeps the user's unmute intent; runtime retries during
+      // playback will enforce unmute even if this call is outside direct gesture.
       if (opts?.deferredFromPrimerReady) {
-        unlockReady = false
-        iosAudioUnlockedRef.current = false
+        unlockReady = startWantsUnmuteRef.current
+        iosAudioUnlockedRef.current = unlockReady
+        if (unlockReady) {
+          unmuteAndResume(volume)
+        }
       } else {
         // Keep this synchronous in the tap event to satisfy iOS audio gesture rules.
         unlockReady = isPrimedRef.current
