@@ -1351,10 +1351,10 @@ export function SyncedVideoPlayer({
   useEffect(() => { syncImmediateAfterTransitionRef.current = syncImmediateAfterTransition }, [syncImmediateAfterTransition])
 
   const loadChannel = useCallback(async (channelId: string, options?: { preferUnmutedStart?: boolean; isRecoveryRetry?: boolean }) => {
-    if (isLoadingRef.current) return
-
     const loadAttemptId = currentLoadAttemptRef.current + 1
     currentLoadAttemptRef.current = loadAttemptId
+    const isStaleLoadAttempt = () => !mountedRef.current || currentLoadAttemptRef.current !== loadAttemptId
+
     clearPlaybackStartWatchdog()
     clearChannelLoadTimeout()
 
@@ -1438,6 +1438,8 @@ export function SyncedVideoPlayer({
       if (!result.serverTime || !result.currentProgram) {
         throw new Error('Invalid API response')
       }
+
+      if (isStaleLoadAttempt()) return
       
       const offset = result.serverTime - clientTime
       setServerTimeOffset(offset)
@@ -1540,6 +1542,7 @@ export function SyncedVideoPlayer({
       lastVideoIdRef.current = program.videoId
       
       const startPlayback = () => {
+        if (isStaleLoadAttempt()) return
         console.log('✅ Player ready - starting playback')
         clearChannelLoadTimeout()
         setPlayerReady(true)
@@ -1637,7 +1640,7 @@ export function SyncedVideoPlayer({
       }
 
       const onPlayerStateChange = (state: number) => {
-        if (!mountedRef.current) return
+        if (isStaleLoadAttempt()) return
 
         console.log('🎬 YouTube state changed:', state)
 
@@ -1684,6 +1687,7 @@ export function SyncedVideoPlayer({
       }
 
       const onPlayerError = (code: number, msg: string) => {
+        if (isStaleLoadAttempt()) return
         console.error('Player error:', code, msg)
         clearChannelLoadTimeout()
         clearPlaybackStartWatchdog()
@@ -1699,6 +1703,7 @@ export function SyncedVideoPlayer({
       }
 
       if (isIOS && isPrimedRef.current) {
+        if (isStaleLoadAttempt()) return
         // Reuse the already-primed iOS player instance to preserve audio unlock.
         setPlayerCallbacks({
           onStateChange: onPlayerStateChange,
@@ -1717,6 +1722,7 @@ export function SyncedVideoPlayer({
 
         startPlayback()
       } else {
+        if (isStaleLoadAttempt()) return
         await initializePlayer({
           videoId: program.videoId,
           startSeconds: Math.floor(startTime),
@@ -1732,6 +1738,7 @@ export function SyncedVideoPlayer({
       }
       
     } catch (error) {
+      if (isStaleLoadAttempt()) return
       console.error('API call failed:', error)
       clearChannelLoadTimeout()
       clearPlaybackStartWatchdog()
@@ -1740,7 +1747,9 @@ export function SyncedVideoPlayer({
       setApiError(error instanceof Error ? error.message : 'Failed to load video')
       setIsLoading(false)
     } finally {
-      clearChannelLoadTimeout()
+      if (!isStaleLoadAttempt()) {
+        clearChannelLoadTimeout()
+      }
     }
   }, [volume, isIOS, initializePlayer, loadVideo, seekTo, play, setYouTubeVolume, setYouTubeMuted, onChannelChange, onStartClick, getDuration, getCurrentTime, fetchFromBrowserAPI, notifyParentScheduleChange, isPrimedRef, setPlayerCallbacks, unmuteAndResume, destroy, clearPlaybackStartWatchdog, clearBrandedOverlayHideTimeout, hideBrandedOverlayAfterDelay, clearChannelLoadTimeout, primePlayer])
 
