@@ -37,6 +37,7 @@ export function useYouTubePlayer() {
   const playerRef = useRef<any>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const playerMountCounterRef = useRef<number>(0)
+  const operationTokenRef = useRef<number>(0)
   const apiReadyRef = useRef<boolean>(false)
   const isMutedRef = useRef<boolean>(true)
   const volumeRef = useRef<number>(75)
@@ -54,6 +55,15 @@ export function useYouTubePlayer() {
   const onDurationChangeRef = useRef<((duration: number) => void) | null>(null)
   const onReadyRef = useRef<((player: any) => void) | null>(null)
   const apiLoadPromiseRef = useRef<Promise<void> | null>(null)
+
+  const nextOperationToken = useCallback(() => {
+    operationTokenRef.current += 1
+    return operationTokenRef.current
+  }, [])
+
+  const isOperationStale = useCallback((token: number) => {
+    return token !== operationTokenRef.current
+  }, [])
 
   const nextPlayerMountId = useCallback((prefix: string) => {
     playerMountCounterRef.current += 1
@@ -84,7 +94,11 @@ export function useYouTubePlayer() {
     }
   }, [])
 
-  const hardResetPlayer = useCallback(() => {
+  const hardResetPlayer = useCallback((options?: { invalidate?: boolean }) => {
+    if (options?.invalidate !== false) {
+      nextOperationToken()
+    }
+
     if (playerRef.current) {
       try {
         if (typeof playerRef.current.mute === 'function') {
@@ -111,7 +125,7 @@ export function useYouTubePlayer() {
     isPrimedRef.current = false
 
     purgeContainerEmbeds(containerRef.current)
-  }, [purgeContainerEmbeds])
+  }, [nextOperationToken, purgeContainerEmbeds])
 
   const createFreshPlayerMount = useCallback((prefix: string) => {
     const root = containerRef.current
@@ -189,6 +203,8 @@ export function useYouTubePlayer() {
   
   const initializePlayer = useCallback(async (options: YouTubePlayerOptions) => {
     if (!containerRef.current) return
+
+    const opToken = nextOperationToken()
     
     volumeRef.current = options.volume || 75
     isMutedRef.current = options.muted ?? true  // default muted; false is intentional
@@ -197,15 +213,21 @@ export function useYouTubePlayer() {
     try {
       await loadYouTubeAPI()
     } catch (err) {
+      if (isOperationStale(opToken)) return
       options.onError?.(0, 'Failed to load YouTube API')
       return
     }
+
+    if (isOperationStale(opToken)) return
     
     // Always force a full teardown + DOM purge before creating a new player.
-    hardResetPlayer()
+    hardResetPlayer({ invalidate: false })
+
+    if (isOperationStale(opToken)) return
     
     try {
       const playerDiv = createFreshPlayerMount('youtube-player')
+      if (isOperationStale(opToken)) return
       if (!playerDiv) {
         options.onError?.(0, 'Failed to create player container')
         return
@@ -231,6 +253,14 @@ export function useYouTubePlayer() {
         },
         events: {
           onReady: (event: any) => {
+            if (isOperationStale(opToken)) {
+              try {
+                if (typeof event?.target?.destroy === 'function') {
+                  event.target.destroy()
+                }
+              } catch (_) {}
+              return
+            }
             try {
               event.target.setVolume(volumeRef.current)
               if (isMutedRef.current) {
@@ -249,6 +279,7 @@ export function useYouTubePlayer() {
             options.onReady?.(event.target)
           },
           onStateChange: (event: any) => {
+            if (isOperationStale(opToken)) return
             // When video is cued or playing, get duration
             if (event.data === YT_STATE.CUED || event.data === YT_STATE.PLAYING) {
               try {
@@ -262,6 +293,7 @@ export function useYouTubePlayer() {
             options.onStateChange?.(event.data)
           },
           onError: (event: any) => {
+            if (isOperationStale(opToken)) return
             options.onError?.(event.data, `Error ${event.data}`)
           }
         }
@@ -296,9 +328,10 @@ export function useYouTubePlayer() {
       }
       setTimeout(() => patchIframeForIOS(), 100)
     } catch (err) {
+      if (isOperationStale(opToken)) return
       options.onError?.(0, 'Failed to create player')
     }
-  }, [createFreshPlayerMount, hardResetPlayer, loadYouTubeAPI])
+  }, [createFreshPlayerMount, hardResetPlayer, isOperationStale, loadYouTubeAPI, nextOperationToken])
 
   // ── primePlayer ──────────────────────────────────────────────────────────────
   // Creates a MUTED, HIDDEN YouTube player on mount — no user gesture required.
@@ -315,16 +348,26 @@ export function useYouTubePlayer() {
   const primePlayer = useCallback(async (): Promise<void> => {
     if (!containerRef.current || isPrimedRef.current) return
 
+    // Never clobber an active non-primed player with a background primer request.
+    if (playerRef.current && !isPrimedRef.current) return
+
+    const opToken = nextOperationToken()
+
     try {
       await loadYouTubeAPI()
     } catch {
       return // API failed — graceful degradation; normal init path will try again
     }
 
+    if (isOperationStale(opToken)) return
+
     try {
-      hardResetPlayer()
+      hardResetPlayer({ invalidate: false })
+
+      if (isOperationStale(opToken)) return
 
       const playerDiv = createFreshPlayerMount('yt-primer')
+      if (isOperationStale(opToken)) return
       if (!playerDiv) return
 
       playerRef.current = new window.YT.Player(playerDiv.id, {
@@ -346,6 +389,7 @@ export function useYouTubePlayer() {
         },
         events: {
           onReady: () => {
+            if (isOperationStale(opToken)) return
             isPrimedRef.current = true
             isMutedRef.current = true
             // Patch iframe attributes so iOS respects playsinline / autoplay allow-list
@@ -372,6 +416,7 @@ export function useYouTubePlayer() {
           // Delegate through refs — initially no-ops; swapped by setPlayerCallbacks
           // when the real video loads, so we keep the same YT.Player instance.
           onStateChange: (event: any) => {
+            if (isOperationStale(opToken)) return
             if (onStateChangeRef.current) {
               onStateChangeRef.current(event.data)
             }
@@ -387,6 +432,7 @@ export function useYouTubePlayer() {
             }
           },
           onError: (event: any) => {
+            if (isOperationStale(opToken)) return
             onErrorRef.current?.(event.data, `Error ${event.data}`)
           },
         },
@@ -394,7 +440,7 @@ export function useYouTubePlayer() {
     } catch (_) {
       // Silently swallow — worst case the normal initializePlayer path runs on tap
     }
-  }, [createFreshPlayerMount, hardResetPlayer, loadYouTubeAPI])
+  }, [createFreshPlayerMount, hardResetPlayer, isOperationStale, loadYouTubeAPI, nextOperationToken])
 
   // ── unmuteAndResume ──────────────────────────────────────────────────────────
   // Call this SYNCHRONOUSLY inside a user-gesture handler (e.g. button onClick).
