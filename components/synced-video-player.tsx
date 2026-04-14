@@ -1755,7 +1755,17 @@ export function SyncedVideoPlayer({
   }, [volume, isIOS, initializePlayer, loadVideo, seekTo, play, setYouTubeVolume, setYouTubeMuted, onChannelChange, onStartClick, getDuration, getCurrentTime, fetchFromBrowserAPI, notifyParentScheduleChange, isPrimedRef, setPlayerCallbacks, unmuteAndResume, destroy, clearPlaybackStartWatchdog, clearBrandedOverlayHideTimeout, hideBrandedOverlayAfterDelay, clearChannelLoadTimeout, primePlayer])
 
   const handleFirstTimeStart = useCallback((opts?: { deferredFromPrimerReady?: boolean }) => {
-    if (isLoadingRef.current || startInProgressRef.current) return
+    const isDeferredStart = opts?.deferredFromPrimerReady === true
+
+    if (startInProgressRef.current) return
+
+    // For deferred iOS starts, the state->ref sync for isLoading can lag by one
+    // tick. Let deferred starts continue instead of being dropped (black screen).
+    if (!isDeferredStart && isLoadingRef.current) return
+    if (isDeferredStart && isLoadingRef.current) {
+      isLoadingRef.current = false
+      setIsLoading(false)
+    }
 
     // Once user presses Start, do not show Start screen again in this page session.
     hasPressedStartRef.current = true
@@ -1863,7 +1873,10 @@ export function SyncedVideoPlayer({
     pendingStartTapRef.current = false
     // Clear the temporary loading guard, then continue the already-requested start.
     setIsLoading(false)
-    handleFirstTimeStart({ deferredFromPrimerReady: true })
+    setTimeout(() => {
+      if (!mountedRef.current) return
+      handleFirstTimeStart({ deferredFromPrimerReady: true })
+    }, 0)
   }, [iosPrimerReady, isIOS, isPrimedRef, handleFirstTimeStart])
 
   // iOS guard: never leave a blank/black frame while waiting for first visible frame.
