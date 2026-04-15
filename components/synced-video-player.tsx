@@ -1357,6 +1357,7 @@ export function SyncedVideoPlayer({
     const loadAttemptId = currentLoadAttemptRef.current + 1
     currentLoadAttemptRef.current = loadAttemptId
     const isStaleLoadAttempt = () => !mountedRef.current || currentLoadAttemptRef.current !== loadAttemptId
+    const shouldStartUnmuted = Boolean(options?.preferUnmutedStart)
 
     clearPlaybackStartWatchdog()
     clearChannelLoadTimeout()
@@ -1366,23 +1367,44 @@ export function SyncedVideoPlayer({
       if (currentLoadAttemptRef.current !== loadAttemptId) return
       if (playerReadyRef.current || iframeVisibleRef.current) return
 
-      console.warn('⚠️ Channel load timeout: recovering without reopening Start screen')
+      console.warn('⚠️ Channel load timeout: attempting one automatic recovery reload')
+
+      if (playbackRecoveryAttemptRef.current >= 1) {
+        startInProgressRef.current = false
+        setIsLoading(false)
+        setShowBrandedOverlay(false)
+        setApiError('Playback is taking longer than expected. Please tap Refresh.')
+        return
+      }
+
+      playbackRecoveryAttemptRef.current += 1
       startInProgressRef.current = false
       setIsLoading(false)
-      setShowBrandedOverlay(false)
-      setApiError(null)
       setShowStartScreen(false)
+      setShowBrandedOverlay(true)
+      setApiError(null)
+      setPlayerReady(false)
+      setIframeVisible(false)
 
-      if (isIOS) {
-        primePlayer().catch(() => {})
-      }
+      try {
+        destroy()
+      } catch (_) {}
+
+      setTimeout(() => {
+        if (!mountedRef.current) return
+        if (currentLoadAttemptRef.current !== loadAttemptId) return
+
+        loadChannel(channelId, {
+          preferUnmutedStart: shouldStartUnmuted,
+          isRecoveryRetry: true,
+        })
+      }, 700)
     }, 20000)
 
     if (!options?.isRecoveryRetry) {
       playbackRecoveryAttemptRef.current = 0
     }
 
-    const shouldStartUnmuted = Boolean(options?.preferUnmutedStart)
     if (shouldStartUnmuted && isIOS) {
       iosAudioUnlockedRef.current = true
     }
@@ -1775,10 +1797,6 @@ export function SyncedVideoPlayer({
       setShowBrandedOverlay(false)
       setApiError(error instanceof Error ? error.message : 'Failed to load video')
       setIsLoading(false)
-    } finally {
-      if (!isStaleLoadAttempt()) {
-        clearChannelLoadTimeout()
-      }
     }
   }, [volume, isIOS, initializePlayer, loadVideo, seekTo, play, setYouTubeVolume, setYouTubeMuted, onChannelChange, onStartClick, getDuration, getCurrentTime, getIsMuted, fetchFromBrowserAPI, notifyParentScheduleChange, isPrimedRef, setPlayerCallbacks, unmuteAndResume, destroy, clearPlaybackStartWatchdog, clearBrandedOverlayHideTimeout, hideBrandedOverlayAfterDelay, clearChannelLoadTimeout, primePlayer])
 
