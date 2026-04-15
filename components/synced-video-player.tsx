@@ -815,8 +815,6 @@ export function SyncedVideoPlayer({
   const iosUnmuteRetryRef = useRef(false)
   const startInProgressRef = useRef(false)
   const hasPressedStartRef = useRef(false)
-  const startWantsUnmuteRef = useRef(false)
-  const pendingStartTapRef = useRef(false)
   const isLoadingRef = useRef(false)
   const playerReadyRef = useRef(false)
   const iframeVisibleRef = useRef(false)
@@ -988,6 +986,22 @@ export function SyncedVideoPlayer({
       cancelled = true
     }
   }, [isIOS, primePlayer, isPrimedRef])
+
+  // Production hardening: keep trying to prime on iOS until ready.
+  // This avoids rare cold-start cases where one initial priming burst fails.
+  useEffect(() => {
+    if (!isIOS || iosPrimerReady) return
+
+    const retryTimer = setInterval(() => {
+      if (isPrimedRef.current) {
+        setIosPrimerReady(true)
+        return
+      }
+      primePlayer().catch(() => {})
+    }, 2500)
+
+    return () => clearInterval(retryTimer)
+  }, [isIOS, iosPrimerReady, isPrimedRef, primePlayer])
 
   // Handle external openHistoryModal prop
   useEffect(() => {
@@ -1800,62 +1814,31 @@ export function SyncedVideoPlayer({
     }
   }, [volume, isIOS, initializePlayer, loadVideo, seekTo, play, setYouTubeVolume, setYouTubeMuted, onChannelChange, onStartClick, getDuration, getCurrentTime, getIsMuted, fetchFromBrowserAPI, notifyParentScheduleChange, isPrimedRef, setPlayerCallbacks, unmuteAndResume, destroy, clearPlaybackStartWatchdog, clearBrandedOverlayHideTimeout, hideBrandedOverlayAfterDelay, clearChannelLoadTimeout, primePlayer])
 
-  const handleFirstTimeStart = useCallback((opts?: { deferredFromPrimerReady?: boolean }) => {
-    const isDeferredStart = opts?.deferredFromPrimerReady === true
-
+  const handleFirstTimeStart = useCallback(() => {
     if (startInProgressRef.current) return
-
-    // For deferred iOS starts, the state->ref sync for isLoading can lag by one
-    // tick. Let deferred starts continue instead of being dropped (black screen).
-    if (!isDeferredStart && isLoadingRef.current) return
-    if (isDeferredStart && isLoadingRef.current) {
-      isLoadingRef.current = false
-      setIsLoading(false)
-    }
+    if (isLoadingRef.current) return
 
     // Once user presses Start, do not show Start screen again in this page session.
     hasPressedStartRef.current = true
-    // User intent: pressing Start means playback should begin with sound.
-    startWantsUnmuteRef.current = true
 
     let unlockReady = false
 
     if (isIOS) {
       if (!iosPrimerReady || !isPrimedRef.current) {
-        // Keep Start screen visible until primer is ready. Avoid auto-starting
-        // outside a fresh gesture, which can fail on iOS Safari after reload.
-        pendingStartTapRef.current = true
-        setShowStartScreen(false)
-        // Give immediate feedback that the tap was accepted while primer finishes.
-        setIsLoading(true)
+        // Do not defer-start outside user gesture on iOS.
+        // Keep start screen visible and ask for tap after primer is ready.
+        setShowStartScreen(true)
+        setIsLoading(false)
         clearBrandedOverlayHideTimeout()
         setShowBrandedOverlay(false)
         primePlayer()
         return
       }
 
-      pendingStartTapRef.current = false
-
-      // Deferred start keeps the user's unmute intent; runtime retries during
-      // playback will enforce unmute even if this call is outside direct gesture.
-      if (opts?.deferredFromPrimerReady) {
-        unlockReady = startWantsUnmuteRef.current
-        iosAudioUnlockedRef.current = unlockReady
-        if (unlockReady) {
-          unmuteAndResume(volume)
-        }
-      } else {
-        // Keep this synchronous in the tap event to satisfy iOS audio gesture rules.
-        unlockReady = isPrimedRef.current
-        iosAudioUnlockedRef.current = unlockReady
-
-        if (unlockReady) {
-          unmuteAndResume(volume)
-        } else {
-          // Best-effort: if primer wasn't ready yet, start creating it now.
-          primePlayer()
-        }
-      }
+      // Keep this synchronous in the tap event to satisfy iOS audio gesture rules.
+      unlockReady = true
+      iosAudioUnlockedRef.current = true
+      unmuteAndResume(volume)
     }
 
     startInProgressRef.current = true
@@ -1911,23 +1894,6 @@ export function SyncedVideoPlayer({
       loadChannel(currentChannelId, { preferUnmutedStart: unlockReady }).finally(completeStartAttempt)
     }
   }, [currentChannelId, iosPrimerReady, isIOS, isPrimedRef, loadChannel, primePlayer, unmuteAndResume, volume, clearBrandedOverlayHideTimeout])
-
-  // If the first Start click happened before iOS primer became ready, continue
-  // automatically once primer is ready (no second click required).
-  useEffect(() => {
-    if (!isIOS) return
-    if (!pendingStartTapRef.current) return
-    if (!iosPrimerReady || !isPrimedRef.current) return
-    if (startInProgressRef.current) return
-
-    pendingStartTapRef.current = false
-    // Clear the temporary loading guard, then continue the already-requested start.
-    setIsLoading(false)
-    setTimeout(() => {
-      if (!mountedRef.current) return
-      handleFirstTimeStart({ deferredFromPrimerReady: true })
-    }, 0)
-  }, [iosPrimerReady, isIOS, isPrimedRef, handleFirstTimeStart])
 
   // iOS guard: never leave a blank/black frame while waiting for first visible frame.
   useEffect(() => {
@@ -2487,10 +2453,16 @@ export function SyncedVideoPlayer({
           {showStartScreen && !isLoading && !apiError && (
             <StartScreen
               onPlayClick={handleFirstTimeStart}
-              isStartDisabled={false}
+              isStartDisabled={isIOS && !iosPrimerReady}
               allowScreenTapStart={false}
               buttonLabel={isIOS ? 'Start Watching' : 'Start Watching'}
-              helperText={isIOS ? 'Tap Start Watching to start with audio' : 'Click to start your spiritual journey'}
+              helperText={
+                isIOS
+                  ? (iosPrimerReady
+                    ? 'Tap Start Watching to start with audio'
+                    : 'Preparing secure iOS playback... please wait 1-2 seconds')
+                  : 'Click to start your spiritual journey'
+              }
             />
           )}
 
