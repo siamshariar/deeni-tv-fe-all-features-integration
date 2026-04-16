@@ -823,6 +823,10 @@ export function SyncedVideoPlayer({
   const brandedOverlayHideTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const playbackStartWatchdogRef = useRef<NodeJS.Timeout | null>(null)
   const playbackRecoveryAttemptRef = useRef(0)
+  const playbackStateRef = useRef<number>(YT_STATE.UNSTARTED)
+  const bufferingStartedAtRef = useRef(0)
+  const bufferingRecoveryStepRef = useRef(0)
+  const lastHardRecoveryAtRef = useRef(0)
   const playbackProgressWatchTimeRef = useRef(0)
   const playbackProgressWatchAtRef = useRef(0)
   const currentLoadAttemptRef = useRef(0)
@@ -1430,6 +1434,9 @@ export function SyncedVideoPlayer({
     setApiError(null)
     setIsMuted(!shouldStartUnmuted)
     setYouTubeMuted(!shouldStartUnmuted)
+    playbackStateRef.current = YT_STATE.UNSTARTED
+    bufferingStartedAtRef.current = 0
+    bufferingRecoveryStepRef.current = 0
     playbackProgressWatchTimeRef.current = 0
     playbackProgressWatchAtRef.current = Date.now()
     setShowAutoUnmuteNotification(false)
@@ -1703,6 +1710,7 @@ export function SyncedVideoPlayer({
         if (isStaleLoadAttempt()) return
 
         console.log('🎬 YouTube state changed:', state)
+        playbackStateRef.current = state
 
         if (state === YT_STATE.ENDED) {
           console.log('📺 Video ended event received - playing next')
@@ -1717,6 +1725,8 @@ export function SyncedVideoPlayer({
           console.log('▶️ Video is now playing')
           clearPlaybackStartWatchdog()
           playbackRecoveryAttemptRef.current = 0
+          bufferingStartedAtRef.current = 0
+          bufferingRecoveryStepRef.current = 0
           playbackProgressWatchTimeRef.current = getCurrentTime()
           playbackProgressWatchAtRef.current = Date.now()
 
@@ -1749,6 +1759,9 @@ export function SyncedVideoPlayer({
           }
         } else if (state === YT_STATE.BUFFERING) {
           console.log('⏳ Video buffering...')
+          if (!bufferingStartedAtRef.current) {
+            bufferingStartedAtRef.current = Date.now()
+          }
         } else if (state === YT_STATE.CUED) {
           console.log('🎬 Video cued - playing')
           play()
@@ -2281,7 +2294,8 @@ export function SyncedVideoPlayer({
 
   // Recover from silent iOS/WebKit stalls by forcing resume when progress freezes.
   useEffect(() => {
-    if (!playerReady || !currentProgram || isLoading || showStartScreen || !!apiError || showBrandedOverlay) return
+    if (!playerReady || !currentProgram || isLoading || showStartScreen || !!apiError) return
+    if (!currentChannelId) return
 
     const stallTimer = setInterval(() => {
       if (!mountedRef.current || isTransitioningRef.current) return
@@ -2298,6 +2312,10 @@ export function SyncedVideoPlayer({
       if (current > playbackProgressWatchTimeRef.current + 0.35) {
         playbackProgressWatchTimeRef.current = current
         playbackProgressWatchAtRef.current = now
+        if (playbackStateRef.current === YT_STATE.PLAYING) {
+          bufferingStartedAtRef.current = 0
+          bufferingRecoveryStepRef.current = 0
+        }
         return
       }
 
@@ -2307,31 +2325,87 @@ export function SyncedVideoPlayer({
       }
 
       const stalledFor = now - playbackProgressWatchAtRef.current
-      if (stalledFor < 8000) return
+      const isBuffering = playbackStateRef.current === YT_STATE.BUFFERING
 
-      console.warn('⚠️ Playback stall detected, forcing resume')
-      play()
-
-      if (isIOS) {
-        unmuteAndResume(volume)
-        setYouTubeMuted(false)
-        setIsMuted(false)
+      if (isBuffering && !bufferingStartedAtRef.current) {
+        bufferingStartedAtRef.current = now
       }
 
-      playbackProgressWatchAtRef.current = now
-    }, 2000)
+      const bufferingFor = bufferingStartedAtRef.current
+        ? now - bufferingStartedAtRef.current
+        : 0
+
+      if (stalledFor < 6000 && bufferingFor < 6000) return
+
+      if (bufferingRecoveryStepRef.current === 0) {
+        console.warn('⚠️ Playback stall detected, forcing resume')
+        play()
+
+        if (isIOS) {
+          unmuteAndResume(volume)
+          setYouTubeMuted(false)
+          setIsMuted(false)
+        }
+
+        bufferingRecoveryStepRef.current = 1
+        playbackProgressWatchAtRef.current = now
+        return
+      }
+
+      if (
+        bufferingRecoveryStepRef.current === 1 &&
+        (stalledFor >= 10000 || bufferingFor >= 9500)
+      ) {
+        console.warn('⚠️ Stall persists, applying small seek nudge')
+
+        const nudgedTo = Math.max(0, current + 0.6)
+        seekTo(nudgedTo, true)
+        play()
+
+        if (isIOS) {
+          unmuteAndResume(volume)
+          setYouTubeMuted(false)
+          setIsMuted(false)
+        }
+
+        bufferingRecoveryStepRef.current = 2
+        playbackProgressWatchAtRef.current = now
+        return
+      }
+
+      if (
+        bufferingRecoveryStepRef.current >= 2 &&
+        (stalledFor >= 17000 || bufferingFor >= 16000)
+      ) {
+        // Cooldown avoids hard-reload loops on unstable networks.
+        if (now - lastHardRecoveryAtRef.current < 25000) {
+          playbackProgressWatchAtRef.current = now
+          return
+        }
+
+        console.warn('⚠️ Stall persists after soft recovery, reloading current channel')
+        lastHardRecoveryAtRef.current = now
+        bufferingRecoveryStepRef.current = 0
+        bufferingStartedAtRef.current = 0
+        playbackProgressWatchAtRef.current = now
+        setShowBrandedOverlay(true)
+        loadChannel(currentChannelId, { preferUnmutedStart: true, isRecoveryRetry: true })
+      }
+    }, 1500)
 
     return () => clearInterval(stallTimer)
   }, [
     apiError,
+    currentChannelId,
     currentProgram,
     getCurrentTime,
     getDuration,
     isIOS,
     isLoading,
+    loadChannel,
     play,
     playerReady,
-    showBrandedOverlay,
+    seekTo,
     showStartScreen,
     unmuteAndResume,
     volume,
