@@ -823,6 +823,8 @@ export function SyncedVideoPlayer({
   const brandedOverlayHideTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const playbackStartWatchdogRef = useRef<NodeJS.Timeout | null>(null)
   const playbackRecoveryAttemptRef = useRef(0)
+  const playbackProgressWatchTimeRef = useRef(0)
+  const playbackProgressWatchAtRef = useRef(0)
   const currentLoadAttemptRef = useRef(0)
   const channelLoadTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -1428,6 +1430,8 @@ export function SyncedVideoPlayer({
     setApiError(null)
     setIsMuted(!shouldStartUnmuted)
     setYouTubeMuted(!shouldStartUnmuted)
+    playbackProgressWatchTimeRef.current = 0
+    playbackProgressWatchAtRef.current = Date.now()
     setShowAutoUnmuteNotification(false)
     hasAutoUnmutedRef.current = shouldStartUnmuted
 
@@ -1713,6 +1717,8 @@ export function SyncedVideoPlayer({
           console.log('▶️ Video is now playing')
           clearPlaybackStartWatchdog()
           playbackRecoveryAttemptRef.current = 0
+          playbackProgressWatchTimeRef.current = getCurrentTime()
+          playbackProgressWatchAtRef.current = Date.now()
 
           if (shouldStartUnmuted && !iosUnmuteRetryRef.current) {
             iosUnmuteRetryRef.current = true
@@ -1736,6 +1742,11 @@ export function SyncedVideoPlayer({
         } else if (state === YT_STATE.PAUSED) {
           console.log('⏸️ Video paused - resuming')
           play()
+          if (isIOS && shouldStartUnmuted) {
+            unmuteAndResume(volume)
+            setYouTubeMuted(false)
+            setIsMuted(false)
+          }
         } else if (state === YT_STATE.BUFFERING) {
           console.log('⏳ Video buffering...')
         } else if (state === YT_STATE.CUED) {
@@ -2134,25 +2145,30 @@ export function SyncedVideoPlayer({
       const updated = addToPreviousVideos(currentChannelId, currentProgram)
       setPreviousVideos(updated)
     }
-    
-    // Reset player state only — do NOT touch previousVideos or localStorage
-    destroy()
+
+    // Keep UI in loading wrapper state during reload.
     setPlayerReady(false)
-    setCurrentProgram(null)
     setApiError(null)
     setIframeVisible(false) // hide iframe until next real PLAYING event
     setShowStartScreen(false)
+    setIsLoading(true)
+    setShowBrandedOverlay(false)
+
+    // Preserve iOS player instance to keep gesture-unlocked audio context.
+    if (!isIOS) {
+      // Reset player state only on non-iOS — do NOT touch previousVideos or localStorage
+      destroy()
+      setCurrentProgram(null)
+    }
+
     // Reload action should continue with sound enabled.
     setIsMuted(false)
     setYouTubeMuted(false)
     setShowAutoUnmuteNotification(false)
     hasAutoUnmutedRef.current = true
-    
-    // Reload same channel — previousVideos state and localStorage are preserved.
-    // For iOS, keep wrapper reload flow without showing the start screen again.
-    setTimeout(() => {
-      loadChannel(currentChannelId, { preferUnmutedStart })
-    }, 200)
+
+    // Reload same channel immediately; iOS keeps wrapper flow without Start screen.
+    loadChannel(currentChannelId, { preferUnmutedStart })
   }, [currentChannelId, currentProgram, isIOS, loadChannel, setYouTubeMuted, unmuteAndResume, destroy, volume, clearPlaybackStartWatchdog, clearBrandedOverlayHideTimeout])
 
   // Auto-start on web/android. iOS waits for explicit Start button click.
@@ -2262,6 +2278,65 @@ export function SyncedVideoPlayer({
       }
     }
   }, [playerReady, currentProgram, updateTimeDisplay, isTransitioningRef.current])
+
+  // Recover from silent iOS/WebKit stalls by forcing resume when progress freezes.
+  useEffect(() => {
+    if (!playerReady || !currentProgram || isLoading || showStartScreen || !!apiError || showBrandedOverlay) return
+
+    const stallTimer = setInterval(() => {
+      if (!mountedRef.current || isTransitioningRef.current) return
+
+      const now = Date.now()
+      const current = getCurrentTime()
+      const duration = getDuration()
+
+      if (!Number.isFinite(current) || current < 0) return
+
+      // Near-end transitions are already handled by playNextVideo logic.
+      if (duration > 0 && duration - current < 1.5) return
+
+      if (current > playbackProgressWatchTimeRef.current + 0.35) {
+        playbackProgressWatchTimeRef.current = current
+        playbackProgressWatchAtRef.current = now
+        return
+      }
+
+      if (!playbackProgressWatchAtRef.current) {
+        playbackProgressWatchAtRef.current = now
+        return
+      }
+
+      const stalledFor = now - playbackProgressWatchAtRef.current
+      if (stalledFor < 8000) return
+
+      console.warn('⚠️ Playback stall detected, forcing resume')
+      play()
+
+      if (isIOS) {
+        unmuteAndResume(volume)
+        setYouTubeMuted(false)
+        setIsMuted(false)
+      }
+
+      playbackProgressWatchAtRef.current = now
+    }, 2000)
+
+    return () => clearInterval(stallTimer)
+  }, [
+    apiError,
+    currentProgram,
+    getCurrentTime,
+    getDuration,
+    isIOS,
+    isLoading,
+    play,
+    playerReady,
+    showBrandedOverlay,
+    showStartScreen,
+    unmuteAndResume,
+    volume,
+    setYouTubeMuted,
+  ])
 
   // 5-minute sync interval
   useEffect(() => {
