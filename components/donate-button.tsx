@@ -14,7 +14,7 @@ export function DonateButton() {
     if (fetchedRef.current) return
     fetchedRef.current = true
 
-    fetch('/api/donation-url')
+    fetch('/api/donation-url', { cache: 'no-store' })
       .then(res => res.json())
       .then(data => { if (data?.url) setDonationUrl(data.url) })
       .catch(() => { /* keep DEFAULT_URL on any error */ })
