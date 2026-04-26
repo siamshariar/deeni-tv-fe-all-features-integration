@@ -53,7 +53,11 @@ export default withPWA({
         }
       },
       {
-        urlPattern: /\/api\/.*/i,
+        urlPattern: /\/api\/donation-url/i,
+        handler: 'NetworkOnly'
+      },
+      {
+        urlPattern: /\/api\/(?!donation-url).*/i,
         handler: 'NetworkFirst',
         options: {
           cacheName: 'api-cache',
