@@ -1600,14 +1600,6 @@ export function SyncedVideoPlayer({
         setShowStartScreen(false)
         onStartClick?.()
 
-        seekTo(startTime, true)
-        play()
-
-        const duration = getDuration()
-        if (duration && duration > 0) {
-          setVideoDuration(duration)
-        }
-
         setYouTubeVolume(volume)
         if (shouldStartUnmuted) {
           setYouTubeMuted(false)
@@ -1615,6 +1607,14 @@ export function SyncedVideoPlayer({
         } else {
           setYouTubeMuted(true)
           setIsMuted(true)
+        }
+
+        seekTo(startTime, true)
+        play()
+
+        const duration = getDuration()
+        if (duration && duration > 0) {
+          setVideoDuration(duration)
         }
 
         const enforceUnmutedPlayback = (attempt: number = 0) => {
