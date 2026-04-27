@@ -262,11 +262,20 @@ export function useYouTubePlayer() {
               return
             }
             try {
-              event.target.setVolume(volumeRef.current)
               if (isMutedRef.current) {
-                event.target.mute()
+                if (typeof event.target.mute === 'function') {
+                  event.target.mute()
+                }
+                if (typeof event.target.setVolume === 'function') {
+                  event.target.setVolume(0)
+                }
               } else {
-                event.target.unMute()
+                if (typeof event.target.setVolume === 'function') {
+                  event.target.setVolume(volumeRef.current)
+                }
+                if (typeof event.target.unMute === 'function') {
+                  event.target.unMute()
+                }
               }
               
               // Get video duration from YouTube API
