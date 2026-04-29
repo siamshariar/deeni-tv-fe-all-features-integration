@@ -1815,10 +1815,6 @@ export function SyncedVideoPlayer({
           throw new Error('Failed to load video in primed iOS player')
         }
 
-        if (shouldStartUnmuted) {
-          unmuteAndResume(volume)
-        }
-
         startPlayback()
       } else {
         if (isStaleLoadAttempt()) return
@@ -1872,9 +1868,9 @@ export function SyncedVideoPlayer({
       // Keep this synchronous in the tap event to satisfy iOS audio gesture rules.
       unlockReady = true
       iosAudioUnlockedRef.current = true
-      // Do not unmute the primed/placeholder player yet; wait until the real
-      // video is loaded and PLAYING. This avoids hearing the default primer
-      // audio on iOS before the real stream starts.
+      // Unlock audio permission, but keep volume at 0 so the iOS primer stays silent
+      // until the actual live video is playing.
+      unmuteAndResume(0)
     }
 
     startInProgressRef.current = true
