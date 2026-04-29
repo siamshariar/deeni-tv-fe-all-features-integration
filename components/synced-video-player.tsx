@@ -1872,7 +1872,9 @@ export function SyncedVideoPlayer({
       // Keep this synchronous in the tap event to satisfy iOS audio gesture rules.
       unlockReady = true
       iosAudioUnlockedRef.current = true
-      unmuteAndResume(volume)
+      // Do not unmute the primed/placeholder player yet; wait until the real
+      // video is loaded and PLAYING. This avoids hearing the default primer
+      // audio on iOS before the real stream starts.
     }
 
     startInProgressRef.current = true
