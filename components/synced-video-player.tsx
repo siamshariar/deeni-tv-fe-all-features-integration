@@ -1717,6 +1717,14 @@ export function SyncedVideoPlayer({
             }
           }
 
+          // Ensure UI reflects actual player mute status (fix iOS icon mismatch)
+          try {
+            if (!getIsMuted()) {
+              setYouTubeMuted(false)
+              setIsMuted(false)
+            }
+          } catch (_) {}
+          
           setIsLoading(false)
           setIframeVisible(true)
           hideBrandedOverlayAfterDelay(3500)
