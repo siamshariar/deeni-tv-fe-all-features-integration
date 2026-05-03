@@ -813,6 +813,7 @@ export function SyncedVideoPlayer({
   const hasAutoUnmutedRef = useRef(false)
   const iosAudioUnlockedRef = useRef(false)
   const iosUnmuteRetryRef = useRef(false)
+  const initialStartFlowRef = useRef(false)
   const startInProgressRef = useRef(false)
   const hasPressedStartRef = useRef(false)
   const isLoadingRef = useRef(false)
@@ -1594,8 +1595,13 @@ export function SyncedVideoPlayer({
         }
 
         setYouTubeVolume(volume)
-        setYouTubeMuted(true)
-        setIsMuted(true)
+        if (isIOS && initialStartFlowRef.current) {
+          setYouTubeMuted(false)
+          setIsMuted(false)
+        } else {
+          setYouTubeMuted(true)
+          setIsMuted(true)
+        }
 
         // Some iOS/Safari sessions play video but miss PLAYING callback.
         // If time progresses, force-restore visuals to avoid black-screen hang.
@@ -1696,7 +1702,13 @@ export function SyncedVideoPlayer({
 
           // Keep the first/default clip muted. Unmute from the second PLAYING event,
           // which corresponds to the real scheduled video after the initial primer/default.
-          if (shouldStartUnmuted) {
+          if (isIOS && initialStartFlowRef.current) {
+            initialStartFlowRef.current = false
+            iosAudioUnlockedRef.current = true
+            unmuteAndResume(volume)
+            setYouTubeMuted(false)
+            setIsMuted(false)
+          } else if (shouldStartUnmuted) {
             if (playEventsSinceLoadRef.current === 1) {
               setYouTubeMuted(true)
               setIsMuted(true)
@@ -1724,7 +1736,7 @@ export function SyncedVideoPlayer({
               setIsMuted(false)
             }
           } catch (_) {}
-          
+
           setIsLoading(false)
           setIframeVisible(true)
           hideBrandedOverlayAfterDelay(3500)
@@ -1839,6 +1851,13 @@ export function SyncedVideoPlayer({
       // Keep this synchronous in the tap event to satisfy iOS audio gesture rules.
       unlockReady = true
       iosAudioUnlockedRef.current = true
+      initialStartFlowRef.current = true
+
+      try {
+        unmuteAndResume(volume)
+        setYouTubeMuted(false)
+        setIsMuted(false)
+      } catch (_) {}
     }
 
     startInProgressRef.current = true
@@ -1891,7 +1910,13 @@ export function SyncedVideoPlayer({
       // Immediately hide the start screen and show the loading overlay
       setShowStartScreen(false)
       setIsLoading(true)
-      loadChannel(currentChannelId, { preferUnmutedStart: unlockReady }).finally(completeStartAttempt)
+      loadChannel(currentChannelId, { preferUnmutedStart: unlockReady }).finally(() => {
+        if (!mountedRef.current) return
+        if (!playerReadyRef.current) {
+          initialStartFlowRef.current = false
+        }
+        completeStartAttempt()
+      })
     }
   }, [currentChannelId, iosPrimerReady, isIOS, isPrimedRef, loadChannel, primePlayer, unmuteAndResume, volume, clearBrandedOverlayHideTimeout])
 
