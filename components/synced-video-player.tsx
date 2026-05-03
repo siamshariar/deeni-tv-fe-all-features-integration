@@ -1943,9 +1943,19 @@ export function SyncedVideoPlayer({
 
     // Keep muted during switch; real video will unmute on PLAYING.
     if (isIOS) {
+      // Treat channel selection as a user gesture on iOS: unlock audio now
       iosAudioUnlockedRef.current = true
+      reloadStartFlowRef.current = true
+      try {
+        unmuteAndResume(volume)
+        setYouTubeMuted(false)
+        setIsMuted(false)
+      } catch (_) {}
     }
 
+    // Keep UI muted until the new iframe is ready; the iOS flow above will
+    // have already performed a synchronous unmute inside the gesture so the
+    // player can remain audible once PLAYING fires.
     setIsMuted(true)
     setYouTubeMuted(true)
     hasAutoUnmutedRef.current = false
