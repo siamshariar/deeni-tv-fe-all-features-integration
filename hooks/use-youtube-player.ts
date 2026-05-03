@@ -45,6 +45,9 @@ export function useYouTubePlayer() {
   const videoIdRef = useRef<string>('')
   // Tracks whether we have a silently primed player that hasn't been swapped yet
   const isPrimedRef = useRef<boolean>(false)
+  // ── Transition mute state — prevents audio from playing during video switches ──
+  const transitionMutedRef = useRef<boolean>(false)
+  const shouldUnmuteAfterPlayingRef = useRef<boolean>(false)
   // ── Delegating event-handler refs ──
   // The primed player's YT.Player events are wired to these refs at construction
   // time.  Initially they are no-ops.  When the real video loads (iOS path), we
@@ -262,20 +265,11 @@ export function useYouTubePlayer() {
               return
             }
             try {
+              event.target.setVolume(volumeRef.current)
               if (isMutedRef.current) {
-                if (typeof event.target.mute === 'function') {
-                  event.target.mute()
-                }
-                if (typeof event.target.setVolume === 'function') {
-                  event.target.setVolume(0)
-                }
+                event.target.mute()
               } else {
-                if (typeof event.target.setVolume === 'function') {
-                  event.target.setVolume(volumeRef.current)
-                }
-                if (typeof event.target.unMute === 'function') {
-                  event.target.unMute()
-                }
+                event.target.unMute()
               }
               
               // Get video duration from YouTube API
@@ -426,6 +420,29 @@ export function useYouTubePlayer() {
           // when the real video loads, so we keep the same YT.Player instance.
           onStateChange: (event: any) => {
             if (isOperationStale(opToken)) return
+            
+            // ── Auto-unmute after transition when PLAYING starts ──
+            // Only auto-unmute when the currently loaded video is NOT the iOS primer.
+            if (
+              event.data === YT_STATE.PLAYING &&
+              transitionMutedRef.current &&
+              shouldUnmuteAfterPlayingRef.current &&
+              videoIdRef.current !== IOS_PRIMER_VIDEO_ID
+            ) {
+              try {
+                // Small delay to ensure video is actually playing
+                setTimeout(() => {
+                  try {
+                    if (typeof playerRef.current?.unMute === 'function') {
+                      playerRef.current.unMute()
+                    }
+                    transitionMutedRef.current = false
+                    shouldUnmuteAfterPlayingRef.current = false
+                  } catch (_) {}
+                }, 100)
+              } catch (_) {}
+            }
+            
             if (onStateChangeRef.current) {
               onStateChangeRef.current(event.data)
             }
@@ -492,10 +509,31 @@ export function useYouTubePlayer() {
     onDurationChangeRef.current = callbacks.onDurationChange ?? null
   }, [])
 
+  // ── muteForTransition ────────────────────────────────────────────────────────
+  // Mutes the player during video transitions to prevent old video audio from playing.
+  // Sets a flag to unmute after the new video starts playing.
+  // Call BEFORE loadVideoById to ensure silence during the transition.
+  const muteForTransition = useCallback((shouldUnmuteAfterPlaying: boolean = true) => {
+    if (!playerRef.current) return
+    try {
+      transitionMutedRef.current = true
+      shouldUnmuteAfterPlayingRef.current = shouldUnmuteAfterPlaying
+      if (typeof playerRef.current.mute === 'function') {
+        playerRef.current.mute()
+      }
+    } catch (_) {}
+  }, [])
+
   const loadVideo = useCallback((videoId: string, startSeconds?: number) => {
     if (!playerRef.current) return false
     
     try {
+      // Always mute before loading new video to prevent old audio from playing
+      if (typeof playerRef.current.mute === 'function') {
+        playerRef.current.mute()
+      }
+      transitionMutedRef.current = true
+      
       videoIdRef.current = videoId
       if (typeof playerRef.current.loadVideoById === 'function') {
         playerRef.current.loadVideoById({
@@ -657,6 +695,7 @@ export function useYouTubePlayer() {
     setPlayerCallbacks,
     isPrimedRef,
     loadVideo,
+    muteForTransition,
     getDuration,
     setVolume,
     setMuted,
