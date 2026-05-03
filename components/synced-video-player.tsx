@@ -814,6 +814,7 @@ export function SyncedVideoPlayer({
   const iosAudioUnlockedRef = useRef(false)
   const iosUnmuteRetryRef = useRef(false)
   const initialStartFlowRef = useRef(false)
+  const reloadStartFlowRef = useRef(false)
   const startInProgressRef = useRef(false)
   const hasPressedStartRef = useRef(false)
   const isLoadingRef = useRef(false)
@@ -1708,6 +1709,12 @@ export function SyncedVideoPlayer({
             unmuteAndResume(volume)
             setYouTubeMuted(false)
             setIsMuted(false)
+          } else if (isIOS && reloadStartFlowRef.current) {
+            reloadStartFlowRef.current = false
+            iosAudioUnlockedRef.current = true
+            unmuteAndResume(volume)
+            setYouTubeMuted(false)
+            setIsMuted(false)
           } else if (shouldStartUnmuted) {
             if (playEventsSinceLoadRef.current === 1) {
               setYouTubeMuted(true)
@@ -2151,6 +2158,13 @@ export function SyncedVideoPlayer({
 
     if (isIOS) {
       iosAudioUnlockedRef.current = true
+      reloadStartFlowRef.current = true
+
+      try {
+        unmuteAndResume(volume)
+        setYouTubeMuted(false)
+        setIsMuted(false)
+      } catch (_) {}
     }
     
     // Save currently-playing video to history BEFORE reload so it appears in the list
@@ -2182,7 +2196,7 @@ export function SyncedVideoPlayer({
 
     // Reload same channel immediately; iOS keeps wrapper flow without Start screen.
     loadChannel(currentChannelId, { preferUnmutedStart })
-  }, [currentChannelId, currentProgram, isIOS, loadChannel, setYouTubeMuted, destroy, clearPlaybackStartWatchdog, clearBrandedOverlayHideTimeout])
+  }, [currentChannelId, currentProgram, isIOS, loadChannel, setYouTubeMuted, setIsMuted, unmuteAndResume, volume, destroy, clearPlaybackStartWatchdog, clearBrandedOverlayHideTimeout])
 
   // Auto-start on web/android. iOS waits for explicit Start button click.
   useEffect(() => {
