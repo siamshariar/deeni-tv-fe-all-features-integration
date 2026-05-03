@@ -813,8 +813,6 @@ export function SyncedVideoPlayer({
   const hasAutoUnmutedRef = useRef(false)
   const iosAudioUnlockedRef = useRef(false)
   const iosUnmuteRetryRef = useRef(false)
-  const restoreAudioAfterReloadRef = useRef(false)
-  const suppressAutoUnmuteRef = useRef(false)
   const startInProgressRef = useRef(false)
   const hasPressedStartRef = useRef(false)
   const isLoadingRef = useRef(false)
@@ -833,6 +831,7 @@ export function SyncedVideoPlayer({
   const playbackProgressWatchAtRef = useRef(0)
   const currentLoadAttemptRef = useRef(0)
   const channelLoadTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const playEventsSinceLoadRef = useRef(0)
 
   const isMobile = useMediaQuery('(max-width: 768px)')
   const isTablet = useMediaQuery('(min-width: 769px) and (max-width: 1024px)')
@@ -865,6 +864,7 @@ export function SyncedVideoPlayer({
     setPlayerCallbacks,
     isPrimedRef,
     loadVideo, 
+    muteForTransition,
     getDuration,
     setVolume: setYouTubeVolume,
     setMuted: setYouTubeMuted,
@@ -940,6 +940,15 @@ export function SyncedVideoPlayer({
       channelLoadTimeoutRef.current = null
     }
   }, [])
+
+  // Ensure player is muted on mount and page reload to prevent default video sound
+  useEffect(() => {
+    if (mountedRef.current) {
+      setIsMuted(true)
+      setYouTubeMuted(true)
+      console.log('🔇 Muted on mount - preventing default video audio')
+    }
+  }, [setYouTubeMuted])
 
   // iOS only: keep start screen with explicit user gesture.
   useEffect(() => {
@@ -1032,45 +1041,15 @@ export function SyncedVideoPlayer({
     }
   }, [initialChannelId, currentChannelId])
 
-  // Auto-unmute only once for the initial muted playback.
+  // Keep initial playback muted on all platforms.
+  // Real content is unmuted only after a transition enters PLAYING.
   useEffect(() => {
-    const shouldAutoUnmute = (
-      !isIOS &&
-      playerReady &&
-      !!currentProgram &&
-      !showStartScreen &&
-      isMuted &&
-      !hasAutoUnmutedRef.current &&
-      !suppressAutoUnmuteRef.current
-    )
-
-    if (!shouldAutoUnmute) {
-      setShowAutoUnmuteNotification(false)
-      return
-    }
-
     if (autoUnmuteTimerRef.current) {
       clearTimeout(autoUnmuteTimerRef.current)
+      autoUnmuteTimerRef.current = null
     }
-
-    setShowAutoUnmuteNotification(true)
-
-    autoUnmuteTimerRef.current = setTimeout(() => {
-      if (mountedRef.current && playerReady && isMuted && !hasAutoUnmutedRef.current && !suppressAutoUnmuteRef.current) {
-        hasAutoUnmutedRef.current = true
-        setIsMuted(false)
-        setYouTubeMuted(false)
-        setShowAutoUnmuteNotification(false)
-        console.log('🔊 Auto-unmuting initial playback')
-      }
-    }, 4000)
-    
-    return () => {
-      if (autoUnmuteTimerRef.current) {
-        clearTimeout(autoUnmuteTimerRef.current)
-      }
-    }
-  }, [isIOS, playerReady, currentProgram, showStartScreen, isMuted, setYouTubeMuted])
+    setShowAutoUnmuteNotification(false)
+  }, [playerReady, currentProgram, showStartScreen, isMuted])
 
   useEffect(() => {
     if (!isMuted) {
@@ -1157,6 +1136,8 @@ export function SyncedVideoPlayer({
 
     // Load and play the next video
     lastVideoIdRef.current = nextProgram.videoId
+    // Ensure transition is muted and schedule auto-unmute when real video starts
+    try { muteForTransition(true) } catch (_) {}
     const loaded = loadVideo(nextProgram.videoId, startTime)
     
     if (loaded) {
@@ -1432,11 +1413,12 @@ export function SyncedVideoPlayer({
       iosAudioUnlockedRef.current = true
     }
     iosUnmuteRetryRef.current = false
+    playEventsSinceLoadRef.current = 0
     
     setIsLoading(true)
     setApiError(null)
-    setIsMuted(!shouldStartUnmuted)
-    setYouTubeMuted(!shouldStartUnmuted)
+    setIsMuted(true)
+    setYouTubeMuted(true)
     playbackStateRef.current = YT_STATE.UNSTARTED
     bufferingStartedAtRef.current = 0
     bufferingRecoveryStepRef.current = 0
@@ -1603,16 +1585,6 @@ export function SyncedVideoPlayer({
         setShowStartScreen(false)
         onStartClick?.()
 
-        if (shouldStartUnmuted) {
-          setYouTubeVolume(volume)
-          setYouTubeMuted(false)
-          setIsMuted(false)
-        } else {
-          setYouTubeVolume(0)
-          setYouTubeMuted(true)
-          setIsMuted(true)
-        }
-
         seekTo(startTime, true)
         play()
 
@@ -1621,22 +1593,9 @@ export function SyncedVideoPlayer({
           setVideoDuration(duration)
         }
 
-        const enforceUnmutedPlayback = (attempt: number = 0) => {
-          if (!shouldStartUnmuted) return
-          if (!mountedRef.current || isStaleLoadAttempt()) return
-
-          unmuteAndResume(volume)
-          setYouTubeMuted(false)
-          setIsMuted(false)
-
-          if (!getIsMuted()) return
-          if (attempt >= 4) return
-
-          const delay = attempt === 0 ? 120 : 280
-          setTimeout(() => enforceUnmutedPlayback(attempt + 1), delay)
-        }
-
-        enforceUnmutedPlayback(0)
+        setYouTubeVolume(volume)
+        setYouTubeMuted(true)
+        setIsMuted(true)
 
         // Some iOS/Safari sessions play video but miss PLAYING callback.
         // If time progresses, force-restore visuals to avoid black-screen hang.
@@ -1727,32 +1686,34 @@ export function SyncedVideoPlayer({
           playNextVideoRef.current()
         } else if (state === YT_STATE.PLAYING) {
           console.log('▶️ Video is now playing')
-          suppressAutoUnmuteRef.current = false
           clearPlaybackStartWatchdog()
           playbackRecoveryAttemptRef.current = 0
           bufferingStartedAtRef.current = 0
           bufferingRecoveryStepRef.current = 0
           playbackProgressWatchTimeRef.current = getCurrentTime()
           playbackProgressWatchAtRef.current = Date.now()
+          playEventsSinceLoadRef.current += 1
 
-          const shouldRestoreAudioOnReload = restoreAudioAfterReloadRef.current
-          if ((shouldStartUnmuted || shouldRestoreAudioOnReload) && !iosUnmuteRetryRef.current) {
-            iosUnmuteRetryRef.current = true
-            if (shouldRestoreAudioOnReload) {
-              restoreAudioAfterReloadRef.current = false
-              hasAutoUnmutedRef.current = true
-            }
-            unmuteAndResume(volume)
-            setYouTubeMuted(false)
-            setIsMuted(false)
+          // Keep the first/default clip muted. Unmute from the second PLAYING event,
+          // which corresponds to the real scheduled video after the initial primer/default.
+          if (shouldStartUnmuted) {
+            if (playEventsSinceLoadRef.current === 1) {
+              setYouTubeMuted(true)
+              setIsMuted(true)
+            } else if (!iosUnmuteRetryRef.current || getIsMuted()) {
+              iosUnmuteRetryRef.current = true
+              unmuteAndResume(volume)
+              setYouTubeMuted(false)
+              setIsMuted(false)
 
-            if (getIsMuted()) {
-              setTimeout(() => {
-                if (!mountedRef.current || isStaleLoadAttempt()) return
-                unmuteAndResume(volume)
-                setYouTubeMuted(false)
-                setIsMuted(false)
-              }, 220)
+              if (getIsMuted()) {
+                setTimeout(() => {
+                  if (!mountedRef.current || isStaleLoadAttempt()) return
+                  unmuteAndResume(volume)
+                  setYouTubeMuted(false)
+                  setIsMuted(false)
+                }, 220)
+              }
             }
           }
 
@@ -1762,7 +1723,7 @@ export function SyncedVideoPlayer({
         } else if (state === YT_STATE.PAUSED) {
           console.log('⏸️ Video paused - resuming')
           play()
-          if (isIOS && shouldStartUnmuted) {
+          if (isIOS && shouldStartUnmuted && playEventsSinceLoadRef.current >= 2) {
             unmuteAndResume(volume)
             setYouTubeMuted(false)
             setIsMuted(false)
@@ -1810,6 +1771,8 @@ export function SyncedVideoPlayer({
           onError: onPlayerError,
         })
 
+        // Ensure transition mute is applied; real video will unmute only on PLAYING.
+        try { muteForTransition(shouldStartUnmuted) } catch (_) {}
         const loaded = loadVideo(program.videoId, Math.floor(startTime))
         if (!loaded) {
           throw new Error('Failed to load video in primed iOS player')
@@ -1822,7 +1785,7 @@ export function SyncedVideoPlayer({
           videoId: program.videoId,
           startSeconds: Math.floor(startTime),
           volume: volume,
-          muted: !shouldStartUnmuted,
+          muted: true,
           onReady: () => {
             startPlayback()
           },
@@ -1851,7 +1814,7 @@ export function SyncedVideoPlayer({
     // Once user presses Start, do not show Start screen again in this page session.
     hasPressedStartRef.current = true
 
-    let unlockReady = false
+    let unlockReady = true
 
     if (isIOS) {
       if (!iosPrimerReady || !isPrimedRef.current) {
@@ -1868,9 +1831,6 @@ export function SyncedVideoPlayer({
       // Keep this synchronous in the tap event to satisfy iOS audio gesture rules.
       unlockReady = true
       iosAudioUnlockedRef.current = true
-      // Unlock audio permission, but keep volume at 0 so the iOS primer stays silent
-      // until the actual live video is playing.
-      unmuteAndResume(0)
     }
 
     startInProgressRef.current = true
@@ -1941,17 +1901,16 @@ export function SyncedVideoPlayer({
   const handleSelectChannel = useCallback((channelId: string) => {
     setShowChannelSelector(false)
 
-    // Channel change is an explicit user gesture; keep audio ON.
+    // Keep muted during switch; real video will unmute on PLAYING.
     if (isIOS) {
       iosAudioUnlockedRef.current = true
-      unmuteAndResume(volume)
     }
 
-    setIsMuted(false)
-    setYouTubeMuted(false)
-    hasAutoUnmutedRef.current = true
+    setIsMuted(true)
+    setYouTubeMuted(true)
+    hasAutoUnmutedRef.current = false
     loadChannel(channelId, { preferUnmutedStart: true })
-  }, [isIOS, loadChannel, setYouTubeMuted, unmuteAndResume, volume])
+  }, [isIOS, loadChannel, setYouTubeMuted])
 
   const handleOpenChannelSelector = useCallback(async () => {
     // First, show the modal with current channels
@@ -2087,6 +2046,7 @@ export function SyncedVideoPlayer({
           lastVideoIdRef.current = apiCurrentId!
 
           // 4. Replace the iframe content immediately with the new video
+          try { muteForTransition(true) } catch (_) {}
           const loaded = loadVideo(apiCurrentId!, seekOffset)
           if (loaded) {
             setTimeout(() => { play() }, 200)
@@ -2154,13 +2114,8 @@ export function SyncedVideoPlayer({
     clearBrandedOverlayHideTimeout()
     playbackRecoveryAttemptRef.current = 0
 
-    const restoreAudioAfterReload = !isMuted
-    restoreAudioAfterReloadRef.current = restoreAudioAfterReload
-    suppressAutoUnmuteRef.current = true
-    const preferUnmutedStart = false
+    const preferUnmutedStart = true
 
-    // Keep the reload transition muted until the updated live stream is ready.
-    // This avoids the initial default/placeholder video from leaking audio.
     if (isIOS) {
       iosAudioUnlockedRef.current = true
     }
@@ -2186,16 +2141,15 @@ export function SyncedVideoPlayer({
       setCurrentProgram(null)
     }
 
-    // Reload action should stay muted through the placeholder phase.
+    // Keep muted during reload; real video will unmute on PLAYING.
     setIsMuted(true)
     setYouTubeMuted(true)
-    setYouTubeVolume(0)
     setShowAutoUnmuteNotification(false)
-    hasAutoUnmutedRef.current = !restoreAudioAfterReload
+    hasAutoUnmutedRef.current = false
 
     // Reload same channel immediately; iOS keeps wrapper flow without Start screen.
     loadChannel(currentChannelId, { preferUnmutedStart })
-  }, [currentChannelId, currentProgram, isIOS, loadChannel, setYouTubeMuted, setYouTubeVolume, unmuteAndResume, destroy, volume, clearPlaybackStartWatchdog, clearBrandedOverlayHideTimeout])
+  }, [currentChannelId, currentProgram, isIOS, loadChannel, setYouTubeMuted, destroy, clearPlaybackStartWatchdog, clearBrandedOverlayHideTimeout])
 
   // Auto-start on web/android. iOS waits for explicit Start button click.
   useEffect(() => {
@@ -2204,7 +2158,7 @@ export function SyncedVideoPlayer({
     if (showStartScreen) return
     if (playerReady || isLoading || currentProgram || apiError) return
 
-    loadChannel(currentChannelId)
+    loadChannel(currentChannelId, { preferUnmutedStart: true })
   }, [isIOS, currentChannelId, showStartScreen, playerReady, isLoading, currentProgram, apiError, loadChannel])
 
   // Trigger reload when parent increments the counter (e.g. Reload menu option)
@@ -2255,6 +2209,7 @@ export function SyncedVideoPlayer({
     
     // Load and play
     lastVideoIdRef.current = video.videoId
+    try { muteForTransition(true) } catch (_) {}
     loadVideo(video.videoId, 0)
     
     setTimeout(() => {
