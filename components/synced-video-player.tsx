@@ -772,6 +772,7 @@ export function SyncedVideoPlayer({
   const [showProgramOverlay, setShowProgramOverlay] = useState(false)
   const [mainPlayerPaused, setMainPlayerPaused] = useState(false)
   const [showAutoUnmuteNotification, setShowAutoUnmuteNotification] = useState(false)
+  const [isVolumeControlsLocked, setIsVolumeControlsLocked] = useState(true)
   
   // Branded loading overlay state - event-based, not timer-based
   const [showBrandedOverlay, setShowBrandedOverlay] = useState(false)
@@ -1140,6 +1141,7 @@ export function SyncedVideoPlayer({
     lastVideoIdRef.current = nextProgram.videoId
     // Ensure transition is muted and schedule auto-unmute when real video starts
     try { muteForTransition(true) } catch (_) {}
+    setIsVolumeControlsLocked(true)
     const loaded = loadVideo(nextProgram.videoId, startTime)
     
     if (loaded) {
@@ -1416,6 +1418,7 @@ export function SyncedVideoPlayer({
     }
     iosUnmuteRetryRef.current = false
     playEventsSinceLoadRef.current = 0
+    setIsVolumeControlsLocked(true)
     
     setIsLoading(true)
     setApiError(null)
@@ -1701,29 +1704,32 @@ export function SyncedVideoPlayer({
           playbackProgressWatchAtRef.current = Date.now()
           playEventsSinceLoadRef.current += 1
 
-          // Keep the first/default clip muted. Unmute from the second PLAYING event,
-          // which corresponds to the real scheduled video after the initial primer/default.
+          // Keep the first/default clip muted until the active flow reaches the real stream.
           if (isIOS && initialStartFlowRef.current) {
             initialStartFlowRef.current = false
             iosAudioUnlockedRef.current = true
             unmuteAndResume(volume)
             setYouTubeMuted(false)
             setIsMuted(false)
+            setIsVolumeControlsLocked(false)
           } else if (isIOS && reloadStartFlowRef.current) {
             reloadStartFlowRef.current = false
             iosAudioUnlockedRef.current = true
             unmuteAndResume(volume)
             setYouTubeMuted(false)
             setIsMuted(false)
+            setIsVolumeControlsLocked(false)
           } else if (shouldStartUnmuted) {
             if (playEventsSinceLoadRef.current === 1) {
               setYouTubeMuted(true)
               setIsMuted(true)
+              setIsVolumeControlsLocked(true)
             } else if (!iosUnmuteRetryRef.current || getIsMuted()) {
               iosUnmuteRetryRef.current = true
               unmuteAndResume(volume)
               setYouTubeMuted(false)
               setIsMuted(false)
+              setIsVolumeControlsLocked(false)
 
               if (getIsMuted()) {
                 setTimeout(() => {
@@ -1731,6 +1737,7 @@ export function SyncedVideoPlayer({
                   unmuteAndResume(volume)
                   setYouTubeMuted(false)
                   setIsMuted(false)
+                  setIsVolumeControlsLocked(false)
                 }, 220)
               }
             }
@@ -1741,6 +1748,7 @@ export function SyncedVideoPlayer({
             if (!getIsMuted()) {
               setYouTubeMuted(false)
               setIsMuted(false)
+              setIsVolumeControlsLocked(false)
             }
           } catch (_) {}
 
@@ -1754,6 +1762,7 @@ export function SyncedVideoPlayer({
             unmuteAndResume(volume)
             setYouTubeMuted(false)
             setIsMuted(false)
+            setIsVolumeControlsLocked(false)
           }
         } else if (state === YT_STATE.BUFFERING) {
           console.log('⏳ Video buffering...')
@@ -1956,6 +1965,7 @@ export function SyncedVideoPlayer({
     // Keep UI muted until the new iframe is ready; the iOS flow above will
     // have already performed a synchronous unmute inside the gesture so the
     // player can remain audible once PLAYING fires.
+    setIsVolumeControlsLocked(true)
     setIsMuted(true)
     setYouTubeMuted(true)
     hasAutoUnmutedRef.current = false
@@ -2190,6 +2200,7 @@ export function SyncedVideoPlayer({
     setShowStartScreen(false)
     setIsLoading(true)
     setShowBrandedOverlay(false)
+    setIsVolumeControlsLocked(true)
 
     // Preserve iOS player instance to keep gesture-unlocked audio context.
     if (!isIOS) {
@@ -2520,6 +2531,9 @@ export function SyncedVideoPlayer({
   }, [])
 
   const toggleMute = useCallback(() => {
+    // Prevent muting/unmuting until the real scheduled video is playing
+    if (isVolumeControlsLocked) return
+
     setIsMuted(prev => {
       const newMuted = !prev
       setYouTubeMuted(newMuted)
@@ -2528,9 +2542,12 @@ export function SyncedVideoPlayer({
       }
       return newMuted
     })
-  }, [volume, setYouTubeMuted, setYouTubeVolume])
+  }, [volume, setYouTubeMuted, setYouTubeVolume, isVolumeControlsLocked])
 
   const handleVolumeChange = useCallback((value: number[]) => {
+    // Prevent volume changes until the real scheduled video is playing
+    if (isVolumeControlsLocked) return
+
     const newVolume = value[0] ?? 0
     setVolume(newVolume)
     setYouTubeVolume(newVolume)
@@ -2545,18 +2562,20 @@ export function SyncedVideoPlayer({
       setIsMuted(false)
       setYouTubeMuted(false)
     }
-  }, [isMuted, setYouTubeMuted, setYouTubeVolume])
+  }, [isMuted, setYouTubeMuted, setYouTubeVolume, isVolumeControlsLocked])
 
   const handleDesktopVolumeMouseEnter = useCallback(() => {
+    if (isVolumeControlsLocked) return
     if (isMobile) return
     if (volumeHideTimeoutRef.current) {
       clearTimeout(volumeHideTimeoutRef.current)
       volumeHideTimeoutRef.current = null
     }
     setShowVolumeSlider(true)
-  }, [isMobile])
+  }, [isMobile, isVolumeControlsLocked])
 
   const handleDesktopVolumeMouseLeave = useCallback(() => {
+    if (isVolumeControlsLocked) return
     if (isMobile) return
     if (volumeHideTimeoutRef.current) {
       clearTimeout(volumeHideTimeoutRef.current)
@@ -2564,7 +2583,7 @@ export function SyncedVideoPlayer({
     volumeHideTimeoutRef.current = setTimeout(() => {
       setShowVolumeSlider(false)
     }, 120)
-  }, [isMobile])
+  }, [isMobile, isVolumeControlsLocked])
 
   const handleActivity = useCallback(() => {
     if (showStartScreenRef.current || isLoadingRef.current || !!apiErrorRef.current) return
@@ -2892,8 +2911,8 @@ export function SyncedVideoPlayer({
   onMouseLeave={handleDesktopVolumeMouseLeave}
 >
   <motion.div
-    whileHover={{ scale: 1.08 }}
-    whileTap={{ scale: 0.95 }}
+    whileHover={{ scale: isVolumeControlsLocked ? 1 : 1.08 }}
+    whileTap={{ scale: isVolumeControlsLocked ? 1 : 0.95 }}
     animate={{ x: !isMobile && showVolumeSlider ? -6 : 0 }}
     transition={{ duration: 0.18, ease: 'easeOut' }}
   >
@@ -2901,10 +2920,13 @@ export function SyncedVideoPlayer({
       variant="ghost"
       size="icon"
       onClick={toggleMute}
-      className={`text-white/90 hover:bg-white/20 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 ${
+      disabled={isVolumeControlsLocked}
+      className={`text-white/90 hover:bg-white/20 rounded-full backdrop-blur-sm border ${
+        isVolumeControlsLocked ? 'bg-white/5 border-white/10 cursor-not-allowed opacity-50' : 'bg-white/10 border-white/20 cursor-pointer'
+      } ${
         isMobile ? 'h-7 w-7' : 'h-9 w-9'
       }`}
-      title={isMuted ? 'Unmute' : 'Mute'}
+      title={isVolumeControlsLocked ? 'Volume becomes available after the real video starts' : isMuted ? 'Unmute' : 'Mute'}
     >
       {isMuted ? (
         <VolumeX className={isMobile ? 'h-3.5 w-3.5' : 'h-4.5 w-4.5'} />
@@ -2917,7 +2939,7 @@ export function SyncedVideoPlayer({
   {!isMobile && (
     <div
       className={`flex items-center justify-start overflow-visible transition-all duration-200 origin-left ${
-        showVolumeSlider ? 'w-28 opacity-100 ml-2 scale-x-100' : 'w-0 opacity-0 ml-0 scale-x-90'
+        showVolumeSlider && !isVolumeControlsLocked ? 'w-28 opacity-100 ml-2 scale-x-100' : 'w-0 opacity-0 ml-0 scale-x-90'
       }`}
     >
       <Slider
