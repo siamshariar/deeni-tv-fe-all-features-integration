@@ -2919,10 +2919,9 @@ export function SyncedVideoPlayer({
     <Button
       variant="ghost"
       size="icon"
-      onClick={toggleMute}
-      disabled={isVolumeControlsLocked}
-      className={`text-white/90 hover:bg-white/20 rounded-full backdrop-blur-sm border ${
-        isVolumeControlsLocked ? 'bg-white/5 border-white/10 cursor-not-allowed opacity-50' : 'bg-white/10 border-white/20 cursor-pointer'
+      onClick={() => !isVolumeControlsLocked && toggleMute()}
+      className={`text-white/90 hover:bg-white/20 rounded-full backdrop-blur-sm border bg-white/10 border-white/20 ${
+        isVolumeControlsLocked ? 'pointer-events-none' : ''
       } ${
         isMobile ? 'h-7 w-7' : 'h-9 w-9'
       }`}
